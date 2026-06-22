@@ -105,6 +105,23 @@ export type {
   AnalysisContext,
 } from './variableAbstraction.js'
 
+// ─── Operation Memory ─────────────────────────────────────────────────────────
+export {
+  OperationMemoryStore,
+  extractPatterns,
+  sequenceSimilarity,
+} from './operationMemory.js'
+export type {
+  OperationPattern,
+  PatternContext,
+  SkillUsageRecord,
+  TemporalPattern,
+  MemoryEntry,
+  ParamValueEntry,
+  MemoryQuery,
+  OperationMemoryOptions,
+} from './operationMemory.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,
