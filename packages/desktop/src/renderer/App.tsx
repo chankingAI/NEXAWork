@@ -1,20 +1,31 @@
 import { useState, useCallback } from 'react';
 import { TitleBar } from './components/TitleBar';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type NavigationId } from './components/Sidebar';
 import { WelcomeView } from './components/WelcomeView';
 import { ChatView } from './components/ChatView';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavigationId>('assistant');
 
   const handleNewSession = useCallback(() => {
     const id = `session-${Date.now()}`;
     setActiveSessionId(id);
+    setActiveNav('assistant');
   }, []);
 
   const handleSelectSession = useCallback((id: string) => {
     setActiveSessionId(id);
+    setActiveNav('assistant');
+  }, []);
+
+  const handleNavigate = useCallback((id: NavigationId) => {
+    setActiveNav(id);
+    // Reset session when navigating away from assistant
+    if (id !== 'assistant') {
+      setActiveSessionId(null);
+    }
   }, []);
 
   return (
@@ -30,6 +41,8 @@ export function App() {
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           onNewSession={handleNewSession}
           onSelectSession={handleSelectSession}
+          onNavigate={handleNavigate}
+          activeNav={activeNav}
           activeSessionId={activeSessionId}
         />
 
