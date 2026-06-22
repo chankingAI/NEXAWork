@@ -1,34 +1,43 @@
 @import "tailwindcss";
+@import "./theme.css";
 
 /**
- * NexaWork Theme System
- * Apple-level aesthetic: white background, black text, 8px grid
+ * NexaWork Global Styles
+ * Imports theme system + defines component-level styles
  */
 
+/* =============================================
+   Tailwind Theme Extension (bridges CSS vars → Tailwind)
+   ============================================= */
 @theme {
   /* Background layers */
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f9fafb;
-  --color-bg-tertiary: #f3f4f6;
-  --color-bg-hover: #f0f0f0;
-  --color-bg-active: #e5e7eb;
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-bg-hover: var(--color-bg-hover);
+  --color-bg-active: var(--color-bg-active);
 
   /* Text layers */
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #6b7280;
-  --color-text-tertiary: #9ca3af;
-  --color-text-inverse: #ffffff;
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-text-quaternary: var(--color-text-quaternary);
 
   /* Accent colors */
-  --color-accent: #1a1a1a;
-  --color-accent-green: #10b981;
+  --color-accent: var(--color-accent);
+  --color-accent-green: #059669;
   --color-accent-red: #ef4444;
   --color-accent-orange: #f59e0b;
   --color-accent-blue: #3b82f6;
 
+  /* Semantic */
+  --color-success: #059669;
+  --color-error: #dc2626;
+
   /* Borders */
-  --color-border: #e5e7eb;
-  --color-border-focus: #1a1a1a;
+  --color-border: var(--color-border);
+  --color-border-focus: var(--color-border-focus);
 
   /* Spacing (4px base) */
   --spacing-xs: 4px;
@@ -63,19 +72,28 @@
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* Base styles */
+/* =============================================
+   Base Styles
+   ============================================= */
 html,
 body {
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: var(--text-md, 14px);
+  line-height: var(--leading-normal);
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Scrollbar styling */
+* {
+  border-color: var(--color-border);
+}
+
+/* =============================================
+   Scrollbar (Apple-style thin)
+   ============================================= */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -86,61 +104,34 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--color-scrollbar, var(--color-border));
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary);
+  background: var(--color-scrollbar-hover, var(--color-text-tertiary));
 }
 
-/* Selection */
+/* =============================================
+   Selection
+   ============================================= */
 ::selection {
   background-color: var(--color-accent);
-  color: var(--color-text-inverse);
+  color: var(--color-text-on-accent, var(--color-text-inverse));
 }
 
-/* Focus ring */
+/* =============================================
+   Focus Ring
+   ============================================= */
 :focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
-/* Dark theme override */
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
-    --color-bg-primary: #1a1a1a;
-    --color-bg-secondary: #262626;
-    --color-bg-tertiary: #333333;
-    --color-bg-hover: #3a3a3a;
-    --color-bg-active: #444444;
-    --color-text-primary: #f9fafb;
-    --color-text-secondary: #a1a1aa;
-    --color-text-tertiary: #71717a;
-    --color-text-inverse: #1a1a1a;
-    --color-accent: #f9fafb;
-    --color-border: #3f3f46;
-    --color-border-focus: #f9fafb;
-  }
-}
-
-:root[data-theme="dark"] {
-  --color-bg-primary: #1a1a1a;
-  --color-bg-secondary: #262626;
-  --color-bg-tertiary: #333333;
-  --color-bg-hover: #3a3a3a;
-  --color-bg-active: #444444;
-  --color-text-primary: #f9fafb;
-  --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #71717a;
-  --color-text-inverse: #1a1a1a;
-  --color-accent: #f9fafb;
-  --color-border: #3f3f46;
-  --color-border-focus: #f9fafb;
-}
-
-/* Electron title bar drag region */
+/* =============================================
+   Electron Title Bar
+   ============================================= */
 .titlebar-drag {
   -webkit-app-region: drag;
 }
@@ -161,19 +152,19 @@ body {
 
 .prose-nexawork .msg-h2 {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: var(--font-semibold, 600);
   margin: 1em 0 0.5em;
   color: var(--color-text-primary);
 }
 .prose-nexawork .msg-h3 {
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: var(--font-semibold, 600);
   margin: 0.8em 0 0.4em;
   color: var(--color-text-primary);
 }
 .prose-nexawork .msg-h4 {
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: var(--font-semibold, 600);
   margin: 0.6em 0 0.3em;
   color: var(--color-text-primary);
 }
@@ -232,9 +223,9 @@ body {
 }
 
 .prose-nexawork .msg-link {
-  color: var(--color-accent-blue);
+  color: var(--color-text-link, var(--color-accent-blue));
   text-decoration: underline;
-  text-decoration-color: var(--color-accent-blue);
+  text-decoration-color: var(--color-text-link, var(--color-accent-blue));
   text-underline-offset: 2px;
 }
 .prose-nexawork .msg-link:hover {
@@ -242,15 +233,52 @@ body {
 }
 
 .prose-nexawork strong {
-  font-weight: 600;
+  font-weight: var(--font-semibold, 600);
 }
 .prose-nexawork em {
   font-style: italic;
 }
 
-/* Quaternary text color */
-@theme {
-  --color-text-quaternary: #d1d5db;
-  --color-success: #10b981;
-  --color-error: #ef4444;
+/* =============================================
+   Component Utility Classes
+   ============================================= */
+.glass-effect {
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="dark"] .glass-effect {
+  background-color: rgba(26, 26, 26, 0.72);
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-secondary) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Truncation utilities */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

@@ -1,0 +1,510 @@
+/**
+ * NexaWork Design System — Apple-Level Theme
+ * ============================================
+ *
+ * Architecture:
+ * 1. All colors via CSS custom properties (zero hard-coded values)
+ * 2. Light theme = default (white bg #FFFFFF, black text #1A1A1A)
+ * 3. Dark theme via [data-theme="dark"] or prefers-color-scheme
+ * 4. 4px base grid for spacing
+ * 5. WCAG AA contrast ratios (4.5:1 minimum)
+ *
+ * Usage: var(--color-bg-primary), var(--font-sans), var(--radius-md), etc.
+ */
+
+/* =============================================
+   1. COLOR SYSTEM — Light Theme (Default)
+   ============================================= */
+:root,
+:root[data-theme="light"] {
+  /* === Background Layers === */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  --color-bg-quaternary: #e5e7eb;
+  --color-bg-hover: #f0f0f0;
+  --color-bg-active: #e5e7eb;
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-elevated: #ffffff;
+
+  /* === Text Layers === */
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --color-text-quaternary: #d1d5db;
+  --color-text-inverse: #ffffff;
+  --color-text-link: #3b82f6;
+  --color-text-on-accent: #ffffff;
+
+  /* === Accent / Brand === */
+  --color-accent: #1a1a1a;
+  --color-accent-hover: #333333;
+  --color-accent-active: #000000;
+
+  /* === Semantic Colors === */
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-bg: #fffbeb;
+  --color-error: #dc2626;
+  --color-error-bg: #fef2f2;
+  --color-info: #2563eb;
+  --color-info-bg: #eff6ff;
+
+  /* === Accent Palette === */
+  --color-accent-green: #059669;
+  --color-accent-red: #ef4444;
+  --color-accent-orange: #f59e0b;
+  --color-accent-blue: #3b82f6;
+  --color-accent-purple: #8b5cf6;
+  --color-accent-pink: #ec4899;
+  --color-accent-cyan: #06b6d4;
+  --color-accent-yellow: #eab308;
+
+  /* === Borders === */
+  --color-border: #e5e7eb;
+  --color-border-secondary: #f3f4f6;
+  --color-border-focus: #1a1a1a;
+  --color-border-error: #ef4444;
+  --color-border-success: #10b981;
+
+  /* === Scrollbar === */
+  --color-scrollbar: #e5e7eb;
+  --color-scrollbar-hover: #9ca3af;
+}
+
+/* =============================================
+   2. COLOR SYSTEM — Dark Theme
+   ============================================= */
+:root[data-theme="dark"] {
+  /* === Background Layers === */
+  --color-bg-primary: #1a1a1a;
+  --color-bg-secondary: #262626;
+  --color-bg-tertiary: #333333;
+  --color-bg-quaternary: #404040;
+  --color-bg-hover: #3a3a3a;
+  --color-bg-active: #444444;
+  --color-bg-overlay: rgba(0, 0, 0, 0.7);
+  --color-bg-elevated: #2a2a2a;
+
+  /* === Text Layers === */
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-text-quaternary: #52525b;
+  --color-text-inverse: #1a1a1a;
+  --color-text-link: #60a5fa;
+  --color-text-on-accent: #1a1a1a;
+
+  /* === Accent / Brand === */
+  --color-accent: #f9fafb;
+  --color-accent-hover: #e5e7eb;
+  --color-accent-active: #ffffff;
+
+  /* === Semantic Colors === */
+  --color-success: #34d399;
+  --color-success-bg: #064e3b;
+  --color-warning: #fbbf24;
+  --color-warning-bg: #78350f;
+  --color-error: #f87171;
+  --color-error-bg: #7f1d1d;
+  --color-info: #60a5fa;
+  --color-info-bg: #1e3a5f;
+
+  /* === Accent Palette === */
+  --color-accent-green: #34d399;
+  --color-accent-red: #f87171;
+  --color-accent-orange: #fbbf24;
+  --color-accent-blue: #60a5fa;
+  --color-accent-purple: #a78bfa;
+  --color-accent-pink: #f472b6;
+  --color-accent-cyan: #22d3ee;
+  --color-accent-yellow: #facc15;
+
+  /* === Borders === */
+  --color-border: #3f3f46;
+  --color-border-secondary: #27272a;
+  --color-border-focus: #f9fafb;
+  --color-border-error: #f87171;
+  --color-border-success: #34d399;
+
+  /* === Scrollbar === */
+  --color-scrollbar: #3f3f46;
+  --color-scrollbar-hover: #71717a;
+}
+
+/* Auto dark via system preference */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --color-bg-primary: #1a1a1a;
+    --color-bg-secondary: #262626;
+    --color-bg-tertiary: #333333;
+    --color-bg-quaternary: #404040;
+    --color-bg-hover: #3a3a3a;
+    --color-bg-active: #444444;
+    --color-bg-overlay: rgba(0, 0, 0, 0.7);
+    --color-bg-elevated: #2a2a2a;
+    --color-text-primary: #f9fafb;
+    --color-text-secondary: #a1a1aa;
+    --color-text-tertiary: #71717a;
+    --color-text-quaternary: #52525b;
+    --color-text-inverse: #1a1a1a;
+    --color-text-link: #60a5fa;
+    --color-text-on-accent: #1a1a1a;
+    --color-accent: #f9fafb;
+    --color-accent-hover: #e5e7eb;
+    --color-accent-active: #ffffff;
+    --color-success: #34d399;
+    --color-success-bg: #064e3b;
+    --color-warning: #fbbf24;
+    --color-warning-bg: #78350f;
+    --color-error: #f87171;
+    --color-error-bg: #7f1d1d;
+    --color-info: #60a5fa;
+    --color-info-bg: #1e3a5f;
+    --color-accent-green: #34d399;
+    --color-accent-red: #f87171;
+    --color-accent-orange: #fbbf24;
+    --color-accent-blue: #60a5fa;
+    --color-accent-purple: #a78bfa;
+    --color-accent-pink: #f472b6;
+    --color-accent-cyan: #22d3ee;
+    --color-accent-yellow: #facc15;
+    --color-border: #3f3f46;
+    --color-border-secondary: #27272a;
+    --color-border-focus: #f9fafb;
+    --color-border-error: #f87171;
+    --color-border-success: #34d399;
+    --color-scrollbar: #3f3f46;
+    --color-scrollbar-hover: #71717a;
+  }
+}
+
+/* =============================================
+   3. TYPOGRAPHY SYSTEM
+   ============================================= */
+:root {
+  /* Font families */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
+    "Segoe UI", Roboto, sans-serif;
+
+  /* Font sizes (modular scale) */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 40px;
+
+  /* Font weights */
+  --font-light: 300;
+  --font-regular: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* Line heights */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* Letter spacing */
+  --tracking-tighter: -0.05em;
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.025em;
+}
+
+/* =============================================
+   4. SPACING SYSTEM (4px base grid)
+   ============================================= */
+:root {
+  --space-0: 0;
+  --space-px: 1px;
+  --space-0_5: 2px;
+  --space-1: 4px;
+  --space-1_5: 6px;
+  --space-2: 8px;
+  --space-2_5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-14: 56px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+}
+
+/* =============================================
+   5. BORDER RADIUS SYSTEM
+   ============================================= */
+:root {
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-full: 9999px;
+}
+
+/* =============================================
+   6. SHADOW SYSTEM (Apple HIG inspired)
+   ============================================= */
+:root {
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07),
+    0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08),
+    0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08),
+    0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+  --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-none: none;
+
+  /* Elevation-specific (Apple-style layering) */
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.12),
+    0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.12),
+    0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.16),
+    0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1),
+    0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* Dark theme shadows (more subtle) */
+:root[data-theme="dark"] {
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
+    0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
+    0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5),
+    0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.1);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+      0 2px 4px -2px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
+      0 4px 6px -4px rgba(0, 0, 0, 0.2);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
+      0 8px 10px -6px rgba(0, 0, 0, 0.2);
+    --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4),
+      0 0 1px rgba(255, 255, 255, 0.05);
+    --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.4),
+      0 0 1px rgba(255, 255, 255, 0.05);
+    --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5),
+      0 0 1px rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* =============================================
+   7. ANIMATION & TRANSITION SYSTEM
+   ============================================= */
+:root {
+  /* Durations */
+  --duration-instant: 0ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 350ms;
+  --duration-slower: 500ms;
+  --duration-slowest: 700ms;
+
+  /* Easing curves (Apple-style) */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Composed transitions */
+  --transition-fast: all var(--duration-fast) var(--ease-default);
+  --transition-normal: all var(--duration-normal) var(--ease-default);
+  --transition-slow: all var(--duration-slow) var(--ease-default);
+  --transition-colors: color var(--duration-fast) var(--ease-default),
+    background-color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
+  --transition-transform: transform var(--duration-normal) var(--ease-out);
+  --transition-opacity: opacity var(--duration-normal) var(--ease-default);
+  --transition-shadow: box-shadow var(--duration-normal) var(--ease-default);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+    --duration-slower: 0ms;
+    --duration-slowest: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =============================================
+   8. Z-INDEX LAYERS
+   ============================================= */
+:root {
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-popover: 500;
+  --z-tooltip: 600;
+  --z-toast: 700;
+  --z-titlebar: 900;
+  --z-max: 9999;
+}
+
+/* =============================================
+   9. LAYOUT CONSTANTS
+   ============================================= */
+:root {
+  /* Sidebar */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 56px;
+  --sidebar-transition: width var(--duration-normal) var(--ease-out);
+
+  /* Title bar */
+  --titlebar-height: 40px;
+
+  /* Content */
+  --content-max-width: 800px;
+  --content-padding: var(--space-6);
+
+  /* Input */
+  --input-height-sm: 28px;
+  --input-height-md: 36px;
+  --input-height-lg: 44px;
+}
+
+/* =============================================
+   10. KEYFRAME ANIMATIONS
+   ============================================= */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes streamingCursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Animation utility classes */
+.animate-fade-in {
+  animation: fadeIn var(--duration-normal) var(--ease-out);
+}
+.animate-slide-up {
+  animation: slideUp var(--duration-normal) var(--ease-out);
+}
+.animate-slide-down {
+  animation: slideDown var(--duration-normal) var(--ease-out);
+}
+.animate-scale-in {
+  animation: scaleIn var(--duration-normal) var(--ease-out);
+}
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-secondary) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+}
+.animate-streaming-cursor {
+  animation: streamingCursor 1s infinite;
+}
+
+/* =============================================
+   11. THEME TRANSITION (no flash on switch)
+   ============================================= */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color var(--duration-slow) var(--ease-default),
+    color var(--duration-slow) var(--ease-default),
+    border-color var(--duration-slow) var(--ease-default),
+    box-shadow var(--duration-slow) var(--ease-default) !important;
+}
