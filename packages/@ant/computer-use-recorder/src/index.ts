@@ -58,6 +58,15 @@ export type {
   GeneratedSkill,
 } from './skillGenerator.js'
 
+// ─── Desktop Recorder ─────────────────────────────────────────────────────────
+export { DesktopRecorder, loadCaptureBackend } from './desktopRecorder.js'
+export type {
+  RawInputEvent,
+  InputCaptureBackend,
+  CaptureHandle,
+  DesktopRecorderOptions,
+} from './desktopRecorder.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,
