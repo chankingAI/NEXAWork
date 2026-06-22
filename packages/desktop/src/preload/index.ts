@@ -1,20 +1,34 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import type { StreamEvent } from '../shared/ipc-channels'
+import type {
+  StreamEvent,
+  ModelConfig,
+  AutomationCreateInput,
+} from '../shared/ipc-channels'
 
 /**
  * NexaWork Preload API
- * Exposes type-safe IPC methods to the Renderer via contextBridge
+ * Type-safe IPC bridge exposed via contextBridge to Renderer
+ * Supports: request-response, streaming, cancellation
  */
 const nexaworkAPI = {
-  // Chat
+  // === Chat ===
   chat: {
     send: (input: { sessionId: string; message: string; model?: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.CHAT_SEND, input),
+
+    stream: (input: { sessionId: string; message: string; model?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHAT_STREAM, input),
+
     stop: (input: { sessionId: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.CHAT_STOP, input),
-    history: (input: { sessionId: string; limit?: number }) =>
+
+    history: (input: { sessionId: string; limit?: number; before?: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.CHAT_HISTORY, input),
+
+    regenerate: (input: { sessionId: string; messageId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CHAT_REGENERATE, input),
+
     onStreamEvent: (callback: (event: StreamEvent) => void) => {
       const handler = (_: unknown, data: StreamEvent) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.CHAT_STREAM_TOKEN, handler)
@@ -24,30 +38,116 @@ const nexaworkAPI = {
     },
   },
 
-  // Session
+  // === Session ===
   session: {
     create: (input: { title?: string; scene?: string; model?: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE, input),
-    list: (input?: { limit?: number }) =>
+
+    list: (input?: { limit?: number; offset?: number }) =>
       ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST, input ?? {}),
+
+    get: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET, input),
+
+    update: (input: {
+      id: string
+      title?: string
+      scene?: string
+      model?: string
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_UPDATE, input),
+
     delete: (input: { id: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, input),
+
+    search: (input: { query: string; limit?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SESSION_SEARCH, input),
   },
 
-  // Model
+  // === Model ===
   model: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.MODEL_LIST),
+
+    set: (input: { modelId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_SET, input),
+
+    test: (input: { modelId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_TEST, input),
+
+    configure: (input: { modelId: string; config: ModelConfig }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_CONFIGURE, input),
   },
 
-  // Settings
+  // === Expert ===
+  expert: {
+    list: (input?: { category?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXPERT_LIST, input ?? {}),
+
+    get: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXPERT_GET, input),
+
+    summon: (input: { expertId: string; sessionId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXPERT_SUMMON, input),
+
+    create: (input: {
+      name: string
+      description: string
+      systemPrompt: string
+      avatar?: string
+    }) => ipcRenderer.invoke(IPC_CHANNELS.EXPERT_CREATE, input),
+
+    recent: (input?: { limit?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXPERT_RECENT, input ?? {}),
+  },
+
+  // === Skill ===
+  skill: {
+    list: (input?: { category?: string; installed?: boolean }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_LIST, input ?? {}),
+
+    install: (input: { skillId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_INSTALL, input),
+
+    toggle: (input: { skillId: string; enabled: boolean }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_TOGGLE, input),
+
+    execute: (input: { skillId: string; params?: Record<string, unknown> }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_EXECUTE, input),
+
+    delete: (input: { skillId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_DELETE, input),
+  },
+
+  // === Automation ===
+  automation: {
+    list: (input?: { status?: 'active' | 'paused' | 'completed' }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_LIST, input ?? {}),
+
+    create: (input: AutomationCreateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_CREATE, input),
+
+    update: (input: { id: string; updates: Partial<AutomationCreateInput> }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_UPDATE, input),
+
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_DELETE, input),
+
+    history: (input: { id: string; limit?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_HISTORY, input),
+  },
+
+  // === Settings ===
   settings: {
     get: (key?: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET, { key }),
+
     set: (key: string, value: unknown) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, { key, value }),
+
+    reset: (key?: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET, { key }),
   },
 
-  // Window controls
+  // === Window Controls ===
   window: {
     minimize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE),
     maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
@@ -55,7 +155,7 @@ const nexaworkAPI = {
     isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
   },
 
-  // App info
+  // === App Info ===
   app: {
     version: () => ipcRenderer.invoke(IPC_CHANNELS.APP_VERSION),
     platform: () => ipcRenderer.invoke(IPC_CHANNELS.APP_PLATFORM),
