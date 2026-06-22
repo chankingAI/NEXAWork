@@ -163,6 +163,10 @@
       "name": "@ant/computer-use-mcp",
       "version": "1.0.0",
     },
+    "packages/@ant/computer-use-recorder": {
+      "name": "@ant/computer-use-recorder",
+      "version": "1.0.0",
+    },
     "packages/@ant/computer-use-swift": {
       "name": "@ant/computer-use-swift",
       "version": "1.0.0",
@@ -381,6 +385,8 @@
     "@ant/computer-use-input": ["@ant/computer-use-input@workspace:packages/@ant/computer-use-input"],
 
     "@ant/computer-use-mcp": ["@ant/computer-use-mcp@workspace:packages/@ant/computer-use-mcp"],
+
+    "@ant/computer-use-recorder": ["@ant/computer-use-recorder@workspace:packages/@ant/computer-use-recorder"],
 
     "@ant/computer-use-swift": ["@ant/computer-use-swift@workspace:packages/@ant/computer-use-swift"],
 
