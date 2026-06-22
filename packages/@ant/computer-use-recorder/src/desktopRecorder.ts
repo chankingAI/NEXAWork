@@ -26,6 +26,8 @@ import type {
   WindowContext,
   ElementContext,
 } from './types.js'
+import { ElementCaptureService } from './elementCapture.js'
+import type { ElementCaptureOptions } from './elementCapture.js'
 
 // ─── Input Capture Backend Interface ──────────────────────────────────────────
 
@@ -1127,6 +1129,8 @@ export interface DesktopRecorderOptions {
   mouseMoveThrottleMs?: number
   /** Click timeout for detecting double/triple clicks in ms (default: 300). */
   multiClickTimeoutMs?: number
+  /** Element capture configuration. Set to false to disable. */
+  elementCapture?: ElementCaptureOptions | false
 }
 
 /**
@@ -1141,7 +1145,7 @@ export class DesktopRecorder {
   private _session: RecordingSession | null = null
   private _status: RecordingStatus = 'stopped'
   private _options: Required<
-    Omit<DesktopRecorderOptions, 'platform' | 'backend'>
+    Omit<DesktopRecorderOptions, 'platform' | 'backend' | 'elementCapture'>
   >
   private _eventListeners: Array<(event: RecorderEvent) => void> = []
   private _lastScreenshotTime = 0
@@ -1159,6 +1163,7 @@ export class DesktopRecorder {
     startTime: number
   } | null = null
   private _keyDownState: Map<string, number> = new Map() // key → timestamp
+  private _elementCapture: ElementCaptureService | null = null
 
   constructor(options: DesktopRecorderOptions = {}) {
     this._options = {
@@ -1173,6 +1178,21 @@ export class DesktopRecorder {
     } else {
       this._backend = this._loadBackend(options.platform)
     }
+
+    // Initialize element capture service (unless explicitly disabled)
+    if (options.elementCapture !== false) {
+      const ecOptions =
+        typeof options.elementCapture === 'object' ? options.elementCapture : {}
+      this._elementCapture = new ElementCaptureService({
+        platform: options.platform,
+        ...ecOptions,
+      })
+    }
+  }
+
+  /** The element capture service instance (for direct access). */
+  get elementCapture(): ElementCaptureService | null {
+    return this._elementCapture
   }
 
   /** Whether the recorder is available on the current platform. */
@@ -1524,6 +1544,14 @@ export class DesktopRecorder {
 
     this._session.events.push(event)
     this._emit({ type: 'event_captured', event })
+
+    // Async element capture for click/type actions (non-blocking)
+    if (this._elementCapture && event.coordinate) {
+      const isInteraction = event.action !== 'mouse_move'
+      if (isInteraction) {
+        void this._elementCapture.enrichEvent(event)
+      }
+    }
 
     // Trigger screenshot if enough time has passed
     if (this._options.captureScreenshots) {

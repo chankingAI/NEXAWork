@@ -67,6 +67,14 @@ export type {
   DesktopRecorderOptions,
 } from './desktopRecorder.js'
 
+// ─── Element Capture ──────────────────────────────────────────────────────────
+export { ElementCaptureService, loadElementBackend } from './elementCapture.js'
+export type {
+  ElementQuery,
+  ElementCaptureBackend,
+  ElementCaptureOptions,
+} from './elementCapture.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,

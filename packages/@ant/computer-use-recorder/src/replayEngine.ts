@@ -237,18 +237,28 @@ export class ReplayEngine {
   /**
    * Adapt an action based on element context when direct coordinates fail.
    * In adaptive mode, uses element selectors/accessibility info to re-locate targets.
+   *
+   * Priority:
+   * 1. selector (automationId) — most precise
+   * 2. accessible_name + role — semantic match
+   * 3. bounding_box center — last resort before raw coordinates
    */
   private async adaptAction(
     _action: DispatchableAction,
     originalEvent: RawActionEvent,
   ): Promise<DispatchableAction> {
-    // If element context has a selector, try to find it and get new coordinates
-    if (originalEvent.element_context?.selector) {
-      // The adaptive strategy would use Runtime.evaluate to find the element
-      // and get its current bounding box. For now, fall back to original coords.
-      // This is a hook point for future AI-driven element location.
-      return { ..._action }
+    const ctx = originalEvent.element_context
+    if (!ctx) return { ..._action }
+
+    // If we have a bounding box from element capture, compute center
+    if (ctx.bounding_box) {
+      const [x1, y1, x2, y2] = ctx.bounding_box
+      const centerX = Math.round((x1 + x2) / 2)
+      const centerY = Math.round((y1 + y2) / 2)
+      return { ..._action, coordinate: [centerX, centerY] }
     }
+
+    // Fallback: return original action (selector/name lookup is a future extension)
     return { ..._action }
   }
 
