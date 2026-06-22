@@ -88,6 +88,23 @@ export type {
   DryRunResult,
 } from './visualMatcher.js'
 
+// ─── Variable Abstraction ─────────────────────────────────────────────────────
+export {
+  VariableAbstractionEngine,
+  detectVariables,
+  generateSchema,
+  rewriteWorkflowScript,
+} from './variableAbstraction.js'
+export type {
+  DetectedVariable,
+  VariableType,
+  SchemaField,
+  GeneratedSchema,
+  VariableAbstractionOptions,
+  AIVariableAnalyzer,
+  AnalysisContext,
+} from './variableAbstraction.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,
