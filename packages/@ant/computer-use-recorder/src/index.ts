@@ -57,3 +57,17 @@ export type {
   SkillGenerateOptions,
   GeneratedSkill,
 } from './skillGenerator.js'
+
+// ─── CLI ──────────────────────────────────────────────────────────────────────
+export {
+  handleRecordCommand,
+  handleReplayCommand,
+  handleGenerateCommand,
+  getRecorderCommands,
+} from './cli.js'
+export type {
+  RecordCommandOptions,
+  ReplayCommandOptions,
+  GenerateCommandOptions,
+  RecorderCommandConfig,
+} from './cli.js'
