@@ -122,6 +122,27 @@ export type {
   OperationMemoryOptions,
 } from './operationMemory.js'
 
+// ─── Replay Recovery ──────────────────────────────────────────────────────────
+export {
+  AdaptiveReplayEngine,
+  classifyFailure,
+  applyRecovery,
+  createInMemoryJournal,
+} from './replayRecovery.js'
+export type {
+  FailureType,
+  VerificationFailure,
+  RecoveryResult,
+  RecoveryOptions,
+  StateAnalyzer,
+  StateAnalysisResult,
+  DialogDetectionResult,
+  ReplayJournal,
+  ReplayJournalEntry,
+  ReplayReport,
+  StepReport,
+} from './replayRecovery.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,
