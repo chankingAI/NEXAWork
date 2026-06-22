@@ -75,6 +75,19 @@ export type {
   ElementCaptureOptions,
 } from './elementCapture.js'
 
+// ─── Visual Matcher ───────────────────────────────────────────────────────────
+export { VisualMatcher } from './visualMatcher.js'
+export type {
+  LocationResult,
+  MatchLevel,
+  VisualMatcherOptions,
+  AccessibilityLocator,
+  VisionProvider,
+  ScreenshotProvider as VisualScreenshotProvider,
+  MatchContext,
+  DryRunResult,
+} from './visualMatcher.js'
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 export {
   handleRecordCommand,

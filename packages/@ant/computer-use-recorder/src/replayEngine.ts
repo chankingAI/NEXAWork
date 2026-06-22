@@ -13,6 +13,8 @@
  */
 
 import type { RawActionEvent, RecordingSession } from './types.js'
+import type { VisualMatcherOptions } from './visualMatcher.js'
+import { VisualMatcher } from './visualMatcher.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,8 @@ export interface ReplayOptions {
   signal?: AbortSignal
   /** Speed multiplier (1.0 = recorded speed, 0.5 = half speed, 2.0 = double speed). */
   speedMultiplier?: number
+  /** Visual matcher options for adaptive mode (Level 1-4 fallback chain). */
+  visualMatcher?: VisualMatcherOptions
 }
 
 /** Progress callback during replay. */
@@ -93,9 +97,11 @@ export interface ReplayResult {
 
 export class ReplayEngine {
   private executor: ActionExecutor
-  private options: Required<Omit<ReplayOptions, 'signal'>> & {
+  private options: Required<Omit<ReplayOptions, 'signal' | 'visualMatcher'>> & {
     signal?: AbortSignal
+    visualMatcher?: VisualMatcherOptions
   }
+  private _visualMatcher: VisualMatcher | null = null
 
   constructor(executor: ActionExecutor, options?: ReplayOptions) {
     this.executor = executor
@@ -106,7 +112,18 @@ export class ReplayEngine {
       maxRetries: options?.maxRetries ?? 2,
       speedMultiplier: options?.speedMultiplier ?? 1.0,
       signal: options?.signal,
+      visualMatcher: options?.visualMatcher,
     }
+
+    // Initialize visual matcher for adaptive mode
+    if (this.options.mode === 'adaptive') {
+      this._visualMatcher = new VisualMatcher(this.options.visualMatcher)
+    }
+  }
+
+  /** Access the visual matcher (available in adaptive mode). */
+  get visualMatcher(): VisualMatcher | null {
+    return this._visualMatcher
   }
 
   /**
@@ -235,30 +252,41 @@ export class ReplayEngine {
   }
 
   /**
-   * Adapt an action based on element context when direct coordinates fail.
-   * In adaptive mode, uses element selectors/accessibility info to re-locate targets.
+   * Adapt an action based on the cascading visual matcher strategy chain.
    *
-   * Priority:
-   * 1. selector (automationId) — most precise
-   * 2. accessible_name + role — semantic match
-   * 3. bounding_box center — last resort before raw coordinates
+   * Priority (from VisualMatcher):
+   *   Level 1: Accessibility (accessible_name + role)
+   *   Level 2: Relative coordinates (proportional positioning)
+   *   Level 3: Visual template matching (screenshot comparison)
+   *   Level 4: Claude Vision (LLM-based grounding)
    */
   private async adaptAction(
     _action: DispatchableAction,
     originalEvent: RawActionEvent,
   ): Promise<DispatchableAction> {
-    const ctx = originalEvent.element_context
-    if (!ctx) return { ..._action }
+    if (this._visualMatcher) {
+      const result = await this._visualMatcher.locate({
+        event: originalEvent,
+        originalCoordinate: _action.coordinate,
+        elementContext: originalEvent.element_context,
+        windowContext: originalEvent.window_context,
+        recordedScreenshot: originalEvent.screenshot_before ?? undefined,
+      })
 
-    // If we have a bounding box from element capture, compute center
-    if (ctx.bounding_box) {
+      if (result.found && result.coordinate) {
+        return { ..._action, coordinate: result.coordinate }
+      }
+    }
+
+    // Legacy fallback: use bounding_box center directly
+    const ctx = originalEvent.element_context
+    if (ctx?.bounding_box) {
       const [x1, y1, x2, y2] = ctx.bounding_box
       const centerX = Math.round((x1 + x2) / 2)
       const centerY = Math.round((y1 + y2) / 2)
       return { ..._action, coordinate: [centerX, centerY] }
     }
 
-    // Fallback: return original action (selector/name lookup is a future extension)
     return { ..._action }
   }
 
