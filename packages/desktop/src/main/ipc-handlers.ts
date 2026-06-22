@@ -9,8 +9,17 @@ import type {
   AutomationInfo,
   AutomationRun,
   IPCError,
-  StreamEvent,
 } from '../shared/ipc-channels'
+import {
+  initializeEngine,
+  getSessionEngine,
+  executeQuery,
+  executeStreamQuery,
+  cancelQuery,
+  getHistory,
+  updateEngineConfig,
+  removeSessionEngine,
+} from './backend/engine'
 
 /**
  * NexaWork IPC Handler Registry
@@ -35,51 +44,76 @@ function createError(code: string, message: string): IPCError {
 }
 
 /**
- * Send stream event to renderer
+ * Get API key from settings or environment
  */
-function emitStreamEvent(win: BrowserWindow | null, event: StreamEvent): void {
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(IPC_CHANNELS.CHAT_STREAM_TOKEN, event)
+function getApiKey(provider: string): string | undefined {
+  switch (provider) {
+    case 'anthropic':
+      return (
+        (settingsStore['apiKeys.anthropic'] as string) ??
+        process.env.ANTHROPIC_API_KEY
+      )
+    case 'openai':
+      return (
+        (settingsStore['apiKeys.openai'] as string) ??
+        process.env.OPENAI_API_KEY
+      )
+    case 'gemini':
+    case 'google':
+      return (
+        (settingsStore['apiKeys.gemini'] as string) ??
+        process.env.GEMINI_API_KEY
+      )
+    case 'grok':
+      return (
+        (settingsStore['apiKeys.grok'] as string) ?? process.env.XAI_API_KEY
+      )
+    default:
+      return undefined
   }
 }
 
 /**
- * Simulate streaming response (will be replaced with QueryEngine in N4)
+ * Map model ID to provider name
  */
-async function simulateStream(
-  win: BrowserWindow | null,
-  sessionId: string,
-  message: string,
-): Promise<string> {
-  const responseText = `Received: "${message}". NexaWork AI streaming ready. QueryEngine integration pending (Prompt N4).`
-  const words = responseText.split(' ')
-  const messageId = generateId()
+function getProviderForModel(modelId: string): string {
+  if (modelId.includes('claude') || modelId === 'auto') return 'anthropic'
+  if (
+    modelId.includes('gpt') ||
+    modelId.includes('o1') ||
+    modelId.includes('o3')
+  )
+    return 'openai'
+  if (modelId.includes('gemini')) return 'gemini'
+  if (modelId.includes('deepseek')) return 'openai' // deepseek uses openai-compatible
+  if (modelId.includes('grok')) return 'grok'
+  return 'anthropic'
+}
 
-  for (let i = 0; i < words.length; i++) {
-    const token = (i === 0 ? '' : ' ') + words[i]
-    emitStreamEvent(win, { type: 'token', data: token })
-    await new Promise(resolve => setTimeout(resolve, 30))
+/**
+ * Resolve model ID to actual API model name
+ */
+function resolveModelName(modelId: string): string {
+  const modelMap: Record<string, string> = {
+    auto: 'claude-sonnet-4-20250514',
+    'claude-sonnet': 'claude-sonnet-4-20250514',
+    'claude-haiku': 'claude-haiku-4-20250414',
+    'gpt-4o': 'gpt-4o',
+    'deepseek-v3': 'deepseek-chat',
+    'gemini-2.0': 'gemini-2.0-flash',
   }
+  return modelMap[modelId] ?? modelId
+}
 
-  emitStreamEvent(win, {
-    type: 'done',
-    data: { messageId, totalTokens: words.length },
-  })
-
-  // Store the complete message
-  const assistantMsg: ChatMessage = {
-    id: messageId,
-    role: 'assistant',
-    content: responseText,
-    model: activeModel,
-    createdAt: new Date().toISOString(),
-  }
-  if (!messages.has(sessionId)) {
-    messages.set(sessionId, [])
-  }
-  messages.get(sessionId)!.push(assistantMsg)
-
-  return messageId
+// Settings store (shared reference for API key lookups)
+const settingsStore: Record<string, unknown> = {
+  theme: 'light',
+  language: 'zh-CN',
+  fontSize: 14,
+  sendKey: 'Enter',
+  model: 'auto',
+  temperature: 0.7,
+  maxTokens: 4096,
 }
 
 // Seed default experts
@@ -164,6 +198,18 @@ export function registerIPCHandlers(): void {
   automationRuns.clear()
   activeModel = 'auto'
 
+  // Reset settings to defaults
+  Object.keys(settingsStore).forEach(k => delete settingsStore[k])
+  Object.assign(settingsStore, {
+    theme: 'light',
+    language: 'zh-CN',
+    fontSize: 14,
+    sendKey: 'Enter',
+    model: 'auto',
+    temperature: 0.7,
+    maxTokens: 4096,
+  })
+
   seedExperts()
   seedSkills()
 
@@ -193,7 +239,19 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.APP_VERSION, () => app.getVersion())
   ipcMain.handle(IPC_CHANNELS.APP_PLATFORM, () => process.platform)
 
-  // === Chat ===
+  // === Initialize Backend Engine ===
+  const provider = getProviderForModel(activeModel)
+  const apiKey = getApiKey(provider)
+  initializeEngine({
+    apiKey,
+    provider: provider as 'anthropic' | 'openai' | 'gemini' | 'grok',
+    model: resolveModelName(activeModel),
+    cwd: process.cwd(),
+    maxRetries: 3,
+    maxTurns: 50,
+  })
+
+  // === Chat (N4: QueryEngine Integration) ===
   ipcMain.handle(
     IPC_CHANNELS.CHAT_SEND,
     async (
@@ -204,29 +262,28 @@ export function registerIPCHandlers(): void {
       if (!sessionId)
         throw createError('INVALID_INPUT', 'sessionId is required')
 
-      const userMsg: ChatMessage = {
-        id: generateId(),
-        role: 'user',
-        content: message,
-        model: input.model ?? activeModel,
-        createdAt: new Date().toISOString(),
+      // Configure engine with API key for selected model
+      const modelId = input.model ?? activeModel
+      const modelProvider = getProviderForModel(modelId)
+      const modelApiKey = getApiKey(modelProvider)
+      updateEngineConfig(sessionId, {
+        model: resolveModelName(modelId),
+        provider: modelProvider as 'anthropic' | 'openai' | 'gemini' | 'grok',
+        apiKey: modelApiKey,
+      })
+
+      try {
+        const result = await executeQuery(sessionId, message, {
+          model: resolveModelName(modelId),
+        })
+        return { messageId: result.messageId, content: result.content }
+      } catch (err: unknown) {
+        const error = err as IPCError
+        throw createError(
+          error.code ?? 'QUERY_ERROR',
+          error.message ?? 'Query failed',
+        )
       }
-
-      if (!messages.has(sessionId)) messages.set(sessionId, [])
-      messages.get(sessionId)!.push(userMsg)
-
-      const assistantId = generateId()
-      const content = `NexaWork AI ready. QueryEngine integration pending (Prompt N4).`
-      const assistantMsg: ChatMessage = {
-        id: assistantId,
-        role: 'assistant',
-        content,
-        model: activeModel,
-        createdAt: new Date().toISOString(),
-      }
-      messages.get(sessionId)!.push(assistantMsg)
-
-      return { messageId: assistantId, content }
     },
   )
 
@@ -240,30 +297,37 @@ export function registerIPCHandlers(): void {
       if (!sessionId)
         throw createError('INVALID_INPUT', 'sessionId is required')
 
-      const streamId = generateId()
-      const userMsg: ChatMessage = {
-        id: generateId(),
-        role: 'user',
-        content: message,
-        model: input.model ?? activeModel,
-        createdAt: new Date().toISOString(),
-      }
+      // Configure engine with API key for selected model
+      const modelId = input.model ?? activeModel
+      const modelProvider = getProviderForModel(modelId)
+      const modelApiKey = getApiKey(modelProvider)
+      updateEngineConfig(sessionId, {
+        model: resolveModelName(modelId),
+        provider: modelProvider as 'anthropic' | 'openai' | 'gemini' | 'grok',
+        apiKey: modelApiKey,
+      })
 
-      if (!messages.has(sessionId)) messages.set(sessionId, [])
-      messages.get(sessionId)!.push(userMsg)
-
-      // Start streaming asynchronously
       const win = BrowserWindow.fromWebContents(event.sender)
-      simulateStream(win, sessionId, message)
-
-      return { streamId }
+      try {
+        const result = await executeStreamQuery(sessionId, message, win, {
+          model: resolveModelName(modelId),
+        })
+        return { streamId: result.streamId }
+      } catch (err: unknown) {
+        const error = err as IPCError
+        throw createError(
+          error.code ?? 'STREAM_ERROR',
+          error.message ?? 'Stream failed',
+        )
+      }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.CHAT_STOP,
     async (_event, input: { sessionId: string }) => {
-      void input
+      cancelQuery(input.sessionId)
+      // Always return success — stop is best-effort
       return { success: true }
     },
   )
@@ -275,6 +339,17 @@ export function registerIPCHandlers(): void {
       input: { sessionId: string; limit?: number; before?: string },
     ) => {
       const { sessionId, limit = 50 } = input
+
+      // Try backend engine first (has real conversation data)
+      const engineHistory = getHistory(sessionId, { limit })
+      if (engineHistory.messages.length > 0) {
+        return {
+          messages: engineHistory.messages,
+          hasMore: engineHistory.hasMore,
+        }
+      }
+
+      // Fallback to in-memory store (for legacy sessions)
       const allMessages = messages.get(sessionId) ?? []
       const sliced = allMessages.slice(-limit)
       return { messages: sliced, hasMore: allMessages.length > limit }
@@ -283,20 +358,35 @@ export function registerIPCHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.CHAT_REGENERATE,
-    async (_event, input: { sessionId: string; messageId: string }) => {
-      const { sessionId } = input
-      const newId = generateId()
-      const content = 'Regenerated response. QueryEngine integration pending.'
-      const msg: ChatMessage = {
-        id: newId,
-        role: 'assistant',
-        content,
-        model: activeModel,
-        createdAt: new Date().toISOString(),
+    async (event, input: { sessionId: string; messageId: string }) => {
+      const { sessionId, messageId } = input
+      const engine = getSessionEngine(sessionId)
+
+      // Find the user message that preceded the messageId and re-send it
+      const msgIndex = engine.messages.findIndex(m => m.id === messageId)
+      let lastUserMessage = ''
+      if (msgIndex > 0) {
+        // Look backward for the user message
+        for (let i = msgIndex - 1; i >= 0; i--) {
+          if (engine.messages[i].role === 'user') {
+            lastUserMessage = engine.messages[i].content
+            break
+          }
+        }
       }
-      if (!messages.has(sessionId)) messages.set(sessionId, [])
-      messages.get(sessionId)!.push(msg)
-      return { messageId: newId, content }
+
+      if (!lastUserMessage) {
+        // If we can't find the preceding user message, use a placeholder
+        lastUserMessage = 'Please regenerate your previous response.'
+      }
+
+      // Remove the old assistant message and re-query
+      engine.messages = engine.messages.filter(m => m.id !== messageId)
+
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const result = await executeStreamQuery(sessionId, lastUserMessage, win)
+
+      return { messageId: result.streamId, content: '' }
     },
   )
 
@@ -368,6 +458,7 @@ export function registerIPCHandlers(): void {
     async (_event, input: { id: string }) => {
       sessions.delete(input.id)
       messages.delete(input.id)
+      removeSessionEngine(input.id)
       return { success: true }
     },
   )
@@ -651,15 +742,7 @@ export function registerIPCHandlers(): void {
   )
 
   // === Settings ===
-  const settingsStore: Record<string, unknown> = {
-    theme: 'light',
-    language: 'zh-CN',
-    fontSize: 14,
-    sendKey: 'Enter',
-    model: 'auto',
-    temperature: 0.7,
-    maxTokens: 4096,
-  }
+  // Settings store is defined at module level (shared with API key lookup)
 
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET,
