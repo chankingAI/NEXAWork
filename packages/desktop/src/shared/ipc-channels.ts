@@ -27,6 +27,9 @@ export const IPC_CHANNELS = {
   MODEL_SET: 'model:set',
   MODEL_TEST: 'model:test',
   MODEL_CONFIGURE: 'model:configure',
+  MODEL_SET_API_KEY: 'model:apiKey:set', // N22
+  MODEL_DELETE_API_KEY: 'model:apiKey:delete', // N22
+  MODEL_API_KEY_STATUS: 'model:apiKey:status', // N22
 
   // Expert
   EXPERT_LIST: 'expert:list',
@@ -67,11 +70,26 @@ export const IPC_CHANNELS = {
   SETTINGS_RESET: 'settings:reset',
   SETTINGS_CHANGED: 'settings:changed', // push: main → renderer
 
+  // Memory (N22)
+  MEMORY_LIST: 'memory:list',
+  MEMORY_ADD: 'memory:add',
+  MEMORY_DELETE: 'memory:delete',
+  MEMORY_CLEAR: 'memory:clear',
+  MEMORY_CHANGED: 'memory:changed', // push: main → renderer
+
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
+
+  // Permission (N17)
+  PERMISSION_GET_MODE: 'permission:getMode',
+  PERMISSION_SET_MODE: 'permission:setMode',
+  PERMISSION_REQUEST: 'permission:request',
+  PERMISSION_RESPOND: 'permission:respond',
+  PERMISSION_LOG_LIST: 'permission:log:list',
+  PERMISSION_LOG_CLEAR: 'permission:log:clear',
 
   // App
   APP_VERSION: 'app:version',
@@ -164,6 +182,21 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.MODEL_CONFIGURE]: {
     input: { modelId: string; config: ModelConfig }
     output: { success: boolean }
+  }
+  [IPC_CHANNELS.MODEL_SET_API_KEY]: {
+    input: { provider: string; apiKey: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.MODEL_DELETE_API_KEY]: {
+    input: { provider: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.MODEL_API_KEY_STATUS]: {
+    input: Record<string, never>
+    output: {
+      configured: Record<string, boolean>
+      encryptionAvailable: boolean
+    }
   }
 
   // Expert
@@ -293,6 +326,28 @@ export interface IPCRequestMap {
     output: Record<string, unknown>
   }
 
+  // Memory (N22)
+  [IPC_CHANNELS.MEMORY_LIST]: {
+    input: Record<string, never>
+    output: { entries: MemoryEntry[]; total: number }
+  }
+  [IPC_CHANNELS.MEMORY_ADD]: {
+    input: { content: string; category?: string }
+    output: { entry: MemoryEntry }
+  }
+  [IPC_CHANNELS.MEMORY_DELETE]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.MEMORY_CLEAR]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.MEMORY_CHANGED]: {
+    input: Record<string, never>
+    output: Record<string, never>
+  }
+
   // Window
   [IPC_CHANNELS.WINDOW_MINIMIZE]: {
     input: Record<string, never>
@@ -309,6 +364,32 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.WINDOW_IS_MAXIMIZED]: {
     input: Record<string, never>
     output: boolean
+  }
+
+  // Permission (N17)
+  [IPC_CHANNELS.PERMISSION_GET_MODE]: {
+    input: Record<string, never>
+    output: { mode: DesktopPermissionMode; bypassAvailable: boolean }
+  }
+  [IPC_CHANNELS.PERMISSION_SET_MODE]: {
+    input: { mode: DesktopPermissionMode }
+    output: { success: boolean; mode: DesktopPermissionMode }
+  }
+  [IPC_CHANNELS.PERMISSION_RESPOND]: {
+    input: {
+      requestId: string
+      decision: PermissionDecisionAction
+      scope: PermissionScope
+    }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PERMISSION_LOG_LIST]: {
+    input: { limit?: number }
+    output: { entries: PermissionLogEntry[] }
+  }
+  [IPC_CHANNELS.PERMISSION_LOG_CLEAR]: {
+    input: Record<string, never>
+    output: { success: boolean }
   }
 
   // App
@@ -384,6 +465,58 @@ export interface SkillInfo {
   installed: boolean
   enabled: boolean
   version: string
+}
+
+/** A single operation-memory record (N22 memory settings). */
+export interface MemoryEntry {
+  id: string
+  content: string
+  category: string
+  createdAt: string
+}
+
+// --- Permission Types (N17) ---
+
+/**
+ * Desktop-level permission mode shown in the toolbar selector.
+ * Maps to backend PermissionMode: 'default' -> 'default', 'full' -> 'bypassPermissions'.
+ */
+export type DesktopPermissionMode = 'default' | 'full'
+
+/** Risk level mirrored from backend src/types/permissions.ts RiskLevel. */
+export type PermissionRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
+
+/** User decision for a tool permission prompt. */
+export type PermissionDecisionAction = 'allow' | 'deny'
+
+/** Scope of an allow decision. */
+export type PermissionScope = 'once' | 'session'
+
+/**
+ * A pending permission request emitted from Main to Renderer when a tool
+ * needs approval (PERMISSION_REQUEST event payload).
+ */
+export interface PermissionRequest {
+  requestId: string
+  tool: string
+  description: string
+  affectedScope: string
+  riskLevel: PermissionRiskLevel
+  input: Record<string, unknown>
+}
+
+/**
+ * A single recorded permission decision (shown in the security center log).
+ */
+export interface PermissionLogEntry {
+  id: string
+  tool: string
+  inputSummary: string
+  mode: DesktopPermissionMode
+  decision: PermissionDecisionAction
+  scope: PermissionScope | 'auto'
+  riskLevel: PermissionRiskLevel
+  timestamp: string
 }
 
 export interface AutomationInfo {

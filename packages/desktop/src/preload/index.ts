@@ -6,6 +6,10 @@ import type {
   AutomationCreateInput,
   AutomationInfo,
   ProjectCreateInput,
+  DesktopPermissionMode,
+  PermissionDecisionAction,
+  PermissionScope,
+  PermissionRequest,
 } from '../shared/ipc-channels'
 
 /**
@@ -77,6 +81,14 @@ const nexaworkAPI = {
 
     configure: (input: { modelId: string; config: ModelConfig }) =>
       ipcRenderer.invoke(IPC_CHANNELS.MODEL_CONFIGURE, input),
+
+    setApiKey: (input: { provider: string; apiKey: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_SET_API_KEY, input),
+
+    deleteApiKey: (input: { provider: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_DELETE_API_KEY, input),
+
+    apiKeyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.MODEL_API_KEY_STATUS),
   },
 
   // === Expert ===
@@ -195,12 +207,60 @@ const nexaworkAPI = {
     },
   },
 
+  // === Memory (N22) ===
+  memory: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LIST),
+
+    add: (input: { content: string; category?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMORY_ADD, input),
+
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE, input),
+
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CLEAR),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.MEMORY_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, handler)
+      }
+    },
+  },
+
   // === Window Controls ===
   window: {
     minimize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE),
     maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
     close: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
     isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  },
+
+  // === Permission (N17) ===
+  permission: {
+    getMode: () => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_GET_MODE),
+
+    setMode: (input: { mode: DesktopPermissionMode }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_SET_MODE, input),
+
+    respond: (input: {
+      requestId: string
+      decision: PermissionDecisionAction
+      scope: PermissionScope
+    }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, input),
+
+    logList: (input?: { limit?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LOG_LIST, input ?? {}),
+
+    logClear: () => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LOG_CLEAR),
+
+    onRequest: (callback: (request: PermissionRequest) => void) => {
+      const handler = (_: unknown, data: PermissionRequest) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.PERMISSION_REQUEST, handler)
+      }
+    },
   },
 
   // === App Info ===

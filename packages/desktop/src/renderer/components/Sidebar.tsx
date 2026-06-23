@@ -23,6 +23,8 @@ import {
   BookOpen,
   Lightbulb,
   Settings,
+  Sparkles,
+  Shield,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -30,7 +32,9 @@ export type NavigationId =
   | 'assistant'
   | 'projects'
   | 'experts'
+  | 'skills'
   | 'automation'
+  | 'security'
   | 'more'
   | 'library'
   | 'inspiration'
@@ -77,7 +81,9 @@ const navItems: NavItemConfig[] = [
   { id: 'assistant', label: '助理', icon: <MessageSquare size={18} /> },
   { id: 'projects', label: '项目', icon: <FolderOpen size={18} /> },
   { id: 'experts', label: '专家', icon: <Users size={18} /> },
+  { id: 'skills', label: '技能', icon: <Sparkles size={18} /> },
   { id: 'automation', label: '自动化', icon: <Zap size={18} /> },
+  { id: 'security', label: '安全', icon: <Shield size={18} /> },
   {
     id: 'more',
     label: '更多',
