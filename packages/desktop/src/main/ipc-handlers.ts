@@ -29,6 +29,8 @@ import {
 } from './backend/engine'
 import { initDatabase, type Database } from './backend/database'
 import { Scheduler, type AutomationExecutor } from './backend/scheduler'
+import { initSettingsStore, type SettingsStore } from './backend/settings-store'
+import { DEFAULT_SETTINGS } from '../shared/settings'
 
 /**
  * NexaWork IPC Handler Registry
@@ -76,6 +78,31 @@ function broadcastAutomationChanged(): void {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.AUTOMATION_CHANGED)
     }
+  }
+}
+
+/** Push the full, updated settings snapshot to every renderer window. */
+function broadcastSettingsChanged(): void {
+  const snapshot = settings.all()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, snapshot)
+    }
+  }
+}
+
+/**
+ * Resolve the on-disk path for settings.json, or null when unavailable
+ * (e.g. unit tests mocking electron) so the store falls back to in-memory.
+ */
+function resolveSettingsPath(): string | null {
+  try {
+    const getPath = (app as { getPath?: (n: string) => string }).getPath
+    if (typeof getPath !== 'function') return null
+    const userData = getPath.call(app, 'userData')
+    return join(userData, 'settings.json')
+  } catch {
+    return null
   }
 }
 
@@ -127,24 +154,20 @@ function getApiKey(provider: string): string | undefined {
   switch (provider) {
     case 'anthropic':
       return (
-        (settingsStore['apiKeys.anthropic'] as string) ??
+        (settings.get('apiKeys.anthropic') as string) ??
         process.env.ANTHROPIC_API_KEY
       )
     case 'openai':
       return (
-        (settingsStore['apiKeys.openai'] as string) ??
-        process.env.OPENAI_API_KEY
+        (settings.get('apiKeys.openai') as string) ?? process.env.OPENAI_API_KEY
       )
     case 'gemini':
     case 'google':
       return (
-        (settingsStore['apiKeys.gemini'] as string) ??
-        process.env.GEMINI_API_KEY
+        (settings.get('apiKeys.gemini') as string) ?? process.env.GEMINI_API_KEY
       )
     case 'grok':
-      return (
-        (settingsStore['apiKeys.grok'] as string) ?? process.env.XAI_API_KEY
-      )
+      return (settings.get('apiKeys.grok') as string) ?? process.env.XAI_API_KEY
     default:
       return undefined
   }
@@ -182,16 +205,9 @@ function resolveModelName(modelId: string): string {
   return modelMap[modelId] ?? modelId
 }
 
-// Settings store (shared reference for API key lookups)
-const settingsStore: Record<string, unknown> = {
-  theme: 'light',
-  language: 'zh-CN',
-  fontSize: 14,
-  sendKey: 'Enter',
-  model: 'auto',
-  temperature: 0.7,
-  maxTokens: 4096,
-}
+// Persistent settings store (shared reference for API key lookups + N21 UI).
+// Initialized in registerIPCHandlers; defaults applied until then.
+let settings: SettingsStore = initSettingsStore(null, { ...DEFAULT_SETTINGS })
 
 // Seed default experts
 function seedExperts(): void {
@@ -283,17 +299,9 @@ export function registerIPCHandlers(): void {
   })
   scheduler.start()
 
-  // Reset settings to defaults
-  Object.keys(settingsStore).forEach(k => delete settingsStore[k])
-  Object.assign(settingsStore, {
-    theme: 'light',
-    language: 'zh-CN',
-    fontSize: 14,
-    sendKey: 'Enter',
-    model: 'auto',
-    temperature: 0.7,
-    maxTokens: 4096,
-  })
+  // Initialize persistent settings (settings.json), defaults applied on first
+  // run; persisted overrides are merged in.
+  settings = initSettingsStore(resolveSettingsPath(), { ...DEFAULT_SETTINGS })
 
   seedExperts()
   seedSkills()
@@ -966,20 +974,22 @@ export function registerIPCHandlers(): void {
   )
 
   // === Settings ===
-  // Settings store is defined at module level (shared with API key lookup)
+  // Backed by the persistent SettingsStore (settings.json). Mutations persist
+  // to disk and broadcast a fresh snapshot to every renderer for live sync.
 
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET,
     async (_event, input: { key?: string }) => {
-      if (input?.key) return { [input.key]: settingsStore[input.key] }
-      return { ...settingsStore }
+      if (input?.key) return { [input.key]: settings.get(input.key) }
+      return settings.all()
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_SET,
     async (_event, input: { key: string; value: unknown }) => {
-      settingsStore[input.key] = input.value
+      settings.set(input.key, input.value)
+      broadcastSettingsChanged()
       return { success: true }
     },
   )
@@ -987,9 +997,8 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_RESET,
     async (_event, input: { key?: string }) => {
-      if (input?.key) {
-        delete settingsStore[input.key]
-      }
+      settings.reset(input?.key)
+      broadcastSettingsChanged()
       return { success: true }
     },
   )

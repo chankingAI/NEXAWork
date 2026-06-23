@@ -184,6 +184,15 @@ const nexaworkAPI = {
 
     reset: (key?: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET, { key }),
+
+    onChanged: (callback: (settings: Record<string, unknown>) => void) => {
+      const handler = (_: unknown, data: Record<string, unknown>) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, handler)
+      }
+    },
   },
 
   // === Window Controls ===

@@ -636,6 +636,44 @@ describe('Handler Logic: Settings', () => {
     const result = await resetHandler({}, { key: 'customKey' })
     expect(result.success).toBe(true)
   })
+
+  test('settings:reset (no key) restores all defaults', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'fontSize', value: 20 })
+    await setHandler({}, { key: 'readingMode', value: true })
+
+    const resetHandler = mockHandlers.get('settings:reset')!
+    await resetHandler({}, {})
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const result = await getHandler({}, {})
+    expect(result.fontSize).toBe(14)
+    expect(result.readingMode).toBe(false)
+    expect(result.language).toBe('zh-CN')
+  })
+
+  test('settings:reset (single key) restores that field default', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'language', value: 'ja' })
+
+    const resetHandler = mockHandlers.get('settings:reset')!
+    await resetHandler({}, { key: 'language' })
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const result = await getHandler({}, { key: 'language' })
+    expect(result.language).toBe('zh-CN')
+  })
+
+  test('settings:set persists boolean + numeric N21 fields', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'skillAutoInstall', value: true })
+    await setHandler({}, { key: 'sendKey', value: 'Ctrl+Enter' })
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const all = await getHandler({}, {})
+    expect(all.skillAutoInstall).toBe(true)
+    expect(all.sendKey).toBe('Ctrl+Enter')
+  })
 })
 
 describe('Handler Logic: App & Window', () => {
