@@ -9,6 +9,9 @@ import type {
   AutomationInfo,
   AutomationRun,
   IPCError,
+  DesktopPermissionMode,
+  PermissionDecisionAction,
+  PermissionScope,
 } from '../shared/ipc-channels'
 import {
   initializeEngine,
@@ -20,6 +23,7 @@ import {
   updateEngineConfig,
   removeSessionEngine,
 } from './backend/engine'
+import { permissionManager } from './backend/permission-manager'
 
 /**
  * NexaWork IPC Handler Registry
@@ -196,6 +200,7 @@ export function registerIPCHandlers(): void {
   skills.clear()
   automations.clear()
   automationRuns.clear()
+  permissionManager.reset()
   activeModel = 'auto'
 
   // Reset settings to defaults
@@ -769,4 +774,51 @@ export function registerIPCHandlers(): void {
       return { success: true }
     },
   )
+
+  // === Permission (N17) ===
+  ipcMain.handle(IPC_CHANNELS.PERMISSION_GET_MODE, async () => {
+    return {
+      mode: permissionManager.getMode(),
+      bypassAvailable: permissionManager.isBypassAvailable(),
+    }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.PERMISSION_SET_MODE,
+    async (_event, input: { mode: DesktopPermissionMode }) => {
+      const mode = permissionManager.setMode(input.mode)
+      return { success: true, mode }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PERMISSION_RESPOND,
+    async (
+      _event,
+      input: {
+        requestId: string
+        decision: PermissionDecisionAction
+        scope: PermissionScope
+      },
+    ) => {
+      const success = permissionManager.respond(
+        input.requestId,
+        input.decision,
+        input.scope,
+      )
+      return { success }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PERMISSION_LOG_LIST,
+    async (_event, input: { limit?: number }) => {
+      return { entries: permissionManager.getLog(input?.limit) }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.PERMISSION_LOG_CLEAR, async () => {
+    permissionManager.clearLog()
+    return { success: true }
+  })
 }

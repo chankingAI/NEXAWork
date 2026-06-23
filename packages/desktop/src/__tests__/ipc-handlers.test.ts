@@ -98,18 +98,25 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('window:close')
     expect(registeredChannels).toContain('window:isMaximized')
 
+    // Permission (5)
+    expect(registeredChannels).toContain('permission:getMode')
+    expect(registeredChannels).toContain('permission:setMode')
+    expect(registeredChannels).toContain('permission:respond')
+    expect(registeredChannels).toContain('permission:log:list')
+    expect(registeredChannels).toContain('permission:log:clear')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 39 channels registered', async () => {
+  test('total handler count: 44 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 5 automation + 3 settings + 4 window + 2 app = 39
-    expect(mockHandlers.size).toBe(39)
+    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 5 automation + 3 settings + 5 permission + 4 window + 2 app = 44
+    expect(mockHandlers.size).toBe(44)
   })
 })
 
