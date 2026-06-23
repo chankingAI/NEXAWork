@@ -80,12 +80,14 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('skill:execute')
     expect(registeredChannels).toContain('skill:delete')
 
-    // Automation (5)
+    // Automation (7)
     expect(registeredChannels).toContain('automation:list')
     expect(registeredChannels).toContain('automation:create')
     expect(registeredChannels).toContain('automation:update')
     expect(registeredChannels).toContain('automation:delete')
     expect(registeredChannels).toContain('automation:history')
+    expect(registeredChannels).toContain('automation:toggle')
+    expect(registeredChannels).toContain('automation:runNow')
 
     // Settings (3)
     expect(registeredChannels).toContain('settings:get')
@@ -110,13 +112,13 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 44 channels registered', async () => {
+  test('total handler count: 46 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 5 automation + 3 settings + 5 permission + 4 window + 2 app = 44
-    expect(mockHandlers.size).toBe(44)
+    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 7 automation + 3 settings + 5 permission + 4 window + 2 app = 46
+    expect(mockHandlers.size).toBe(46)
   })
 })
 
@@ -441,6 +443,46 @@ describe('Handler Logic: Automation', () => {
     const handler = mockHandlers.get('automation:history')!
     const result = await handler({}, { id: created.id })
     expect(result.runs).toHaveLength(0)
+  })
+
+  test('automation:toggle pauses and resumes', async () => {
+    const createHandler = mockHandlers.get('automation:create')!
+    const created = await createHandler(
+      {},
+      { name: 'Tg', prompt: 'x', cron: '0 8 * * *', workspace: '/' },
+    )
+
+    const toggle = mockHandlers.get('automation:toggle')!
+    const paused = await toggle({}, { id: created.id, status: 'paused' })
+    expect(paused.success).toBe(true)
+    expect(paused.status).toBe('paused')
+
+    const list = mockHandlers.get('automation:list')!
+    const result = await list({}, { status: 'paused' })
+    expect(
+      result.automations.some((a: { id: string }) => a.id === created.id),
+    ).toBe(true)
+  })
+
+  test('automation:toggle throws on missing id', async () => {
+    const toggle = mockHandlers.get('automation:toggle')!
+    expect(toggle({}, { id: 'missing', status: 'paused' })).rejects.toThrow()
+  })
+
+  test('automation:runNow records a run returned by history', async () => {
+    const createHandler = mockHandlers.get('automation:create')!
+    const created = await createHandler(
+      {},
+      { name: 'Run', prompt: 'x', cron: '0 8 * * *', workspace: '/' },
+    )
+
+    const runNow = mockHandlers.get('automation:runNow')!
+    const result = await runNow({}, { id: created.id })
+    expect(result.run.status).toBe('success')
+
+    const history = mockHandlers.get('automation:history')!
+    const hist = await history({}, { id: created.id })
+    expect(hist.runs).toHaveLength(1)
   })
 })
 

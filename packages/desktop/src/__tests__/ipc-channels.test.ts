@@ -71,6 +71,9 @@ describe('IPC_CHANNELS', () => {
     expect(IPC_CHANNELS.AUTOMATION_UPDATE).toBe('automation:update')
     expect(IPC_CHANNELS.AUTOMATION_DELETE).toBe('automation:delete')
     expect(IPC_CHANNELS.AUTOMATION_HISTORY).toBe('automation:history')
+    expect(IPC_CHANNELS.AUTOMATION_TOGGLE).toBe('automation:toggle')
+    expect(IPC_CHANNELS.AUTOMATION_RUN_NOW).toBe('automation:runNow')
+    expect(IPC_CHANNELS.AUTOMATION_RUN_EVENT).toBe('automation:runEvent')
   })
 
   test('settings channels follow naming convention', () => {
