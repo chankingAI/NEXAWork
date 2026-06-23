@@ -30,6 +30,14 @@ export interface EngineConfig {
   cwd: string
   maxRetries: number
   maxTurns: number
+  /** System prompt prepended to every request (N22 agent settings). */
+  systemPrompt?: string
+  /** Sampling temperature 0-1 (N22 agent settings). */
+  temperature?: number
+  /** Max completion tokens (N22 agent settings). */
+  maxTokens?: number
+  /** Custom provider base endpoint override (N22 model settings). */
+  baseURL?: string
 }
 
 export type ProviderType =
@@ -164,6 +172,10 @@ export async function executeQuery(
       cwd: engine.config.cwd,
       abortSignal: abortController.signal,
       maxRetries: engine.config.maxRetries,
+      systemPrompt: engine.config.systemPrompt,
+      temperature: engine.config.temperature,
+      maxTokens: engine.config.maxTokens,
+      baseURL: engine.config.baseURL,
     })
 
     const assistantMsg: ChatMessage = {
@@ -360,6 +372,10 @@ interface BridgeParams {
   cwd: string
   abortSignal: AbortSignal
   maxRetries: number
+  systemPrompt?: string
+  temperature?: number
+  maxTokens?: number
+  baseURL?: string
 }
 
 interface StreamChunk {
@@ -431,6 +447,10 @@ async function callRealAPI(
         apiKey: apiKey!,
         messages: [{ role: 'user', content: message }],
         signal: abortSignal,
+        systemPrompt: params.systemPrompt,
+        temperature: params.temperature,
+        maxTokens: params.maxTokens,
+        baseURL: params.baseURL,
       })
 
       return {
@@ -463,6 +483,10 @@ async function* callRealAPIStream(
       messages: [{ role: 'user', content: message }],
       signal: abortSignal,
       stream: true,
+      systemPrompt: params.systemPrompt,
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
+      baseURL: params.baseURL,
     })
 
     // Parse SSE stream
@@ -485,6 +509,10 @@ interface ProviderRequest {
   messages: Array<{ role: string; content: string }>
   signal: AbortSignal
   stream?: boolean
+  systemPrompt?: string
+  temperature?: number
+  maxTokens?: number
+  baseURL?: string
 }
 
 interface ProviderResponse {
@@ -517,7 +545,9 @@ function getProviderEndpoint(provider: ProviderType): string {
 async function fetchFromProvider(
   params: ProviderRequest,
 ): Promise<ProviderResponse> {
-  const endpoint = getProviderEndpoint(params.provider)
+  const endpoint = params.baseURL?.trim()
+    ? params.baseURL.trim()
+    : getProviderEndpoint(params.provider)
   const headers = buildProviderHeaders(params.provider, params.apiKey)
   const body = buildProviderBody(params)
 
@@ -578,11 +608,16 @@ function buildProviderHeaders(
 }
 
 function buildProviderBody(params: ProviderRequest): Record<string, unknown> {
+  const maxTokens = params.maxTokens ?? 8192
   switch (params.provider) {
     case 'anthropic':
       return {
         model: params.model,
-        max_tokens: 8192,
+        max_tokens: maxTokens,
+        ...(params.systemPrompt ? { system: params.systemPrompt } : {}),
+        ...(params.temperature !== undefined
+          ? { temperature: params.temperature }
+          : {}),
         messages: params.messages.map(m => ({
           role: m.role,
           content: m.content,
@@ -590,21 +625,40 @@ function buildProviderBody(params: ProviderRequest): Record<string, unknown> {
         stream: params.stream ?? false,
       }
     case 'openai':
-    case 'grok':
+    case 'grok': {
+      const messages = params.systemPrompt
+        ? [
+            { role: 'system', content: params.systemPrompt },
+            ...params.messages.map(m => ({ role: m.role, content: m.content })),
+          ]
+        : params.messages.map(m => ({ role: m.role, content: m.content }))
       return {
         model: params.model,
-        messages: params.messages.map(m => ({
-          role: m.role,
-          content: m.content,
-        })),
+        max_tokens: maxTokens,
+        ...(params.temperature !== undefined
+          ? { temperature: params.temperature }
+          : {}),
+        messages,
         stream: params.stream ?? false,
       }
+    }
     case 'gemini':
       return {
         contents: params.messages.map(m => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: m.content }],
         })),
+        ...(params.systemPrompt
+          ? {
+              systemInstruction: { parts: [{ text: params.systemPrompt }] },
+            }
+          : {}),
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          ...(params.temperature !== undefined
+            ? { temperature: params.temperature }
+            : {}),
+        },
       }
     default:
       return {

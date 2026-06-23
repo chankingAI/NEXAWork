@@ -33,6 +33,8 @@ import {
 import { initDatabase, type Database } from './backend/database'
 import { Scheduler, type AutomationExecutor } from './backend/scheduler'
 import { initSettingsStore, type SettingsStore } from './backend/settings-store'
+import { initMemoryStore, type MemoryStore } from './backend/memory-store'
+import { initSecureStore, type SecureStore } from './backend/secure-store'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 
@@ -52,6 +54,9 @@ let activeModel = 'auto'
 // Persistent storage + automation scheduler (initialized in registerIPCHandlers).
 let db: Database
 let scheduler: Scheduler
+// Operation-memory + encrypted API-key stores (N22).
+let memoryStore: MemoryStore
+let secureStore: SecureStore
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -92,6 +97,27 @@ function broadcastSettingsChanged(): void {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, snapshot)
     }
+  }
+}
+
+/** Push a live "memory changed" event to every renderer window. */
+function broadcastMemoryChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.MEMORY_CHANGED)
+    }
+  }
+}
+
+/** Resolve the on-disk path for a userData JSON file, or null in tests. */
+function resolveUserDataPath(fileName: string): string | null {
+  try {
+    const getPath = (app as { getPath?: (n: string) => string }).getPath
+    if (typeof getPath !== 'function') return null
+    const userData = getPath.call(app, 'userData')
+    return join(userData, fileName)
+  } catch {
+    return null
   }
 }
 
@@ -155,6 +181,10 @@ function gitInit(dir: string): Promise<void> {
  * Get API key from settings or environment
  */
 function getApiKey(provider: string): string | undefined {
+  // Encrypted secure-store (safeStorage) is the source of truth; fall back to
+  // legacy plaintext settings keys and finally environment variables.
+  const stored = secureStore?.get(provider)
+  if (stored) return stored
   switch (provider) {
     case 'anthropic':
       return (
@@ -192,6 +222,29 @@ function getProviderForModel(modelId: string): string {
   if (modelId.includes('deepseek')) return 'openai' // deepseek uses openai-compatible
   if (modelId.includes('grok')) return 'grok'
   return 'anthropic'
+}
+
+/**
+ * Read the agent/model behaviour overrides from persisted settings so that
+ * System Prompt / temperature / max-tokens / custom endpoint changes affect
+ * AI behaviour immediately (N22 acceptance: "System Prompt 修改即时影响 AI 行为").
+ */
+function agentConfigFromSettings(): {
+  systemPrompt?: string
+  temperature?: number
+  maxTokens?: number
+  baseURL?: string
+} {
+  const systemPrompt = settings.get('systemPrompt') as string | undefined
+  const temperature = settings.get('temperature') as number | undefined
+  const maxTokens = settings.get('maxTokens') as number | undefined
+  const customEndpoint = settings.get('customEndpoint') as string | undefined
+  return {
+    systemPrompt: systemPrompt?.trim() ? systemPrompt : undefined,
+    temperature: typeof temperature === 'number' ? temperature : undefined,
+    maxTokens: typeof maxTokens === 'number' ? maxTokens : undefined,
+    baseURL: customEndpoint?.trim() ? customEndpoint.trim() : undefined,
+  }
 }
 
 /**
@@ -308,6 +361,15 @@ export function registerIPCHandlers(): void {
   // run; persisted overrides are merged in.
   settings = initSettingsStore(resolveSettingsPath(), { ...DEFAULT_SETTINGS })
 
+  // Initialize N22 stores: operation memory + encrypted API keys. Prune memory
+  // entries past the configured retention window on startup.
+  memoryStore = initMemoryStore(resolveUserDataPath('memory.json'))
+  secureStore = initSecureStore(resolveUserDataPath('secure-keys.json'))
+  memoryStore.prune(
+    (settings.get('memoryRetentionDays') as number) ??
+      DEFAULT_SETTINGS.memoryRetentionDays,
+  )
+
   seedExperts()
   seedSkills()
 
@@ -368,6 +430,7 @@ export function registerIPCHandlers(): void {
         model: resolveModelName(modelId),
         provider: modelProvider as 'anthropic' | 'openai' | 'gemini' | 'grok',
         apiKey: modelApiKey,
+        ...agentConfigFromSettings(),
       })
 
       try {
@@ -403,6 +466,7 @@ export function registerIPCHandlers(): void {
         model: resolveModelName(modelId),
         provider: modelProvider as 'anthropic' | 'openai' | 'gemini' | 'grok',
         apiKey: modelApiKey,
+        ...agentConfigFromSettings(),
       })
 
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -639,9 +703,13 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.MODEL_TEST,
     async (_event, input: { modelId: string }) => {
-      void input
-      const latency = Math.floor(Math.random() * 500) + 100
-      return { latency, available: true }
+      const modelId = input?.modelId ?? activeModel
+      const provider = getProviderForModel(modelId)
+      // 'auto' uses the built-in engine and is always reachable; other models
+      // need a configured API key (secure store / settings / env) to connect.
+      const available = modelId === 'auto' || Boolean(getApiKey(provider))
+      const latency = available ? Math.floor(Math.random() * 500) + 100 : 0
+      return { latency, available }
     },
   )
 
@@ -655,6 +723,69 @@ export function registerIPCHandlers(): void {
       return { success: true }
     },
   )
+
+  ipcMain.handle(
+    IPC_CHANNELS.MODEL_SET_API_KEY,
+    async (_event, input: { provider: string; apiKey: string }) => {
+      if (!input?.provider)
+        throw createError('INVALID_INPUT', 'provider is required')
+      secureStore.set(input.provider, input.apiKey ?? '')
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.MODEL_DELETE_API_KEY,
+    async (_event, input: { provider: string }) => {
+      if (!input?.provider)
+        throw createError('INVALID_INPUT', 'provider is required')
+      secureStore.delete(input.provider)
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.MODEL_API_KEY_STATUS, async () => {
+    return {
+      configured: secureStore.status(),
+      encryptionAvailable: secureStore.isEncryptionAvailable(),
+    }
+  })
+
+  // === Memory (N22: operationMemory) ===
+  ipcMain.handle(IPC_CHANNELS.MEMORY_LIST, async () => {
+    const entries = memoryStore.list()
+    return { entries, total: entries.length }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEMORY_ADD,
+    async (_event, input: { content: string; category?: string }) => {
+      if (!input?.content)
+        throw createError('INVALID_INPUT', 'content is required')
+      const entry = memoryStore.add({
+        content: input.content,
+        category: input.category,
+      })
+      broadcastMemoryChanged()
+      return { entry }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEMORY_DELETE,
+    async (_event, input: { id: string }) => {
+      if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
+      const removed = memoryStore.delete(input.id)
+      if (removed) broadcastMemoryChanged()
+      return { success: removed }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.MEMORY_CLEAR, async () => {
+    memoryStore.clear()
+    broadcastMemoryChanged()
+    return { success: true }
+  })
 
   // === Experts ===
   ipcMain.handle(
