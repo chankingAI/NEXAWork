@@ -4,6 +4,7 @@ import type {
   StreamEvent,
   ModelConfig,
   AutomationCreateInput,
+  AutomationRun,
   DesktopPermissionMode,
   PermissionDecisionAction,
   PermissionScope,
@@ -137,6 +138,25 @@ const nexaworkAPI = {
 
     history: (input: { id: string; limit?: number }) =>
       ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_HISTORY, input),
+
+    toggle: (input: { id: string; status: 'active' | 'paused' }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_TOGGLE, input),
+
+    runNow: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_RUN_NOW, input),
+
+    onRunEvent: (
+      callback: (data: { automationId: string; run: AutomationRun }) => void,
+    ) => {
+      const handler = (
+        _: unknown,
+        data: { automationId: string; run: AutomationRun },
+      ) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.AUTOMATION_RUN_EVENT, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.AUTOMATION_RUN_EVENT, handler)
+      }
+    },
   },
 
   // === Settings ===

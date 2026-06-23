@@ -8,8 +8,10 @@ import { SkillManagementPage, type CreateSkillDraft, type ImportMethod } from '.
 import { PermissionSelector } from './components/PermissionSelector';
 import { PermissionConfirmDialog } from './components/PermissionConfirmDialog';
 import { PermissionLogView } from './components/PermissionLogView';
+import { AutomationPanel } from './components/AutomationPanel';
 import { defaultSkills, type MarketSkill } from './components/SkillSearchPanel';
 import { usePermission } from './hooks/usePermission';
+import { useAutomations } from './hooks/useAutomations';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -19,6 +21,7 @@ export function App() {
   const [autoUpdate, setAutoUpdate] = useState(false);
   const scene = useScene('office');
   const permission = usePermission();
+  const automations = useAutomations();
 
   const handleNewSession = useCallback(() => {
     const id = `session-${Date.now()}`;
@@ -144,6 +147,15 @@ export function App() {
               />
             ) : activeNav === 'security' ? (
               <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
+            ) : activeNav === 'automation' ? (
+              <AutomationPanel
+                automations={automations.automations}
+                now={automations.now}
+                onCreate={automations.create}
+                onToggle={automations.toggle}
+                onDelete={automations.remove}
+                onRunNow={automations.runNow}
+              />
             ) : activeSessionId ? (
               <ChatView
                 sessionId={activeSessionId}

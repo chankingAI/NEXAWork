@@ -6,8 +6,6 @@ import type {
   ModelInfo,
   ExpertInfo,
   SkillInfo,
-  AutomationInfo,
-  AutomationRun,
   IPCError,
   DesktopPermissionMode,
   PermissionDecisionAction,
@@ -24,6 +22,7 @@ import {
   removeSessionEngine,
 } from './backend/engine'
 import { permissionManager } from './backend/permission-manager'
+import { automationManager } from './backend/automation-manager'
 
 /**
  * NexaWork IPC Handler Registry
@@ -35,8 +34,6 @@ const sessions: Map<string, SessionInfo> = new Map()
 const messages: Map<string, ChatMessage[]> = new Map()
 const experts: Map<string, ExpertInfo> = new Map()
 const skills: Map<string, SkillInfo> = new Map()
-const automations: Map<string, AutomationInfo> = new Map()
-const automationRuns: Map<string, AutomationRun[]> = new Map()
 let activeModel = 'auto'
 
 function generateId(): string {
@@ -198,9 +195,13 @@ export function registerIPCHandlers(): void {
   messages.clear()
   experts.clear()
   skills.clear()
-  automations.clear()
-  automationRuns.clear()
   permissionManager.reset()
+  automationManager.reset()
+  automationManager.setEmit((channel, payload) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload)
+    }
+  })
   activeModel = 'auto'
 
   // Reset settings to defaults
@@ -685,13 +686,11 @@ export function registerIPCHandlers(): void {
     },
   )
 
-  // === Automation ===
+  // === Automation (N18) ===
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_LIST,
-    async (_event, input: { status?: string }) => {
-      let list = Array.from(automations.values())
-      if (input?.status) list = list.filter(a => a.status === input.status)
-      return { automations: list }
+    async (_event, input: { status?: 'active' | 'paused' | 'completed' }) => {
+      return { automations: automationManager.list(input?.status) }
     },
   )
 
@@ -699,31 +698,26 @@ export function registerIPCHandlers(): void {
     IPC_CHANNELS.AUTOMATION_CREATE,
     async (
       _event,
-      input: { name: string; prompt: string; cron: string; workspace: string },
+      input: {
+        name: string
+        prompt: string
+        cron: string
+        workspace: string
+        startDate?: string
+        endDate?: string
+      },
     ) => {
-      const id = `auto-${generateId()}`
-      const automation: AutomationInfo = {
-        id,
-        name: input.name,
-        prompt: input.prompt,
-        cron: input.cron,
-        workspace: input.workspace,
-        status: 'active',
-        nextRun: new Date(Date.now() + 3600000).toISOString(),
-      }
-      automations.set(id, automation)
-      automationRuns.set(id, [])
-      return { id }
+      const automation = automationManager.create(input)
+      return { id: automation.id }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_UPDATE,
     async (_event, input: { id: string; updates: Record<string, unknown> }) => {
-      const automation = automations.get(input.id)
-      if (!automation)
+      const ok = automationManager.update(input.id, input.updates)
+      if (!ok)
         throw createError('NOT_FOUND', `Automation ${input.id} not found`)
-      Object.assign(automation, input.updates)
       return { success: true }
     },
   )
@@ -731,8 +725,7 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_DELETE,
     async (_event, input: { id: string }) => {
-      automations.delete(input.id)
-      automationRuns.delete(input.id)
+      automationManager.delete(input.id)
       return { success: true }
     },
   )
@@ -740,9 +733,27 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_HISTORY,
     async (_event, input: { id: string; limit?: number }) => {
-      const limit = input.limit ?? 20
-      const runs = (automationRuns.get(input.id) ?? []).slice(-limit)
-      return { runs }
+      return { runs: automationManager.history(input.id, input.limit) }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.AUTOMATION_TOGGLE,
+    async (_event, input: { id: string; status: 'active' | 'paused' }) => {
+      const ok = automationManager.toggle(input.id, input.status)
+      if (!ok)
+        throw createError('NOT_FOUND', `Automation ${input.id} not found`)
+      return { success: true, status: input.status }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.AUTOMATION_RUN_NOW,
+    async (_event, input: { id: string }) => {
+      const run = automationManager.runNow(input.id)
+      if (!run)
+        throw createError('NOT_FOUND', `Automation ${input.id} not found`)
+      return { run }
     },
   )
 

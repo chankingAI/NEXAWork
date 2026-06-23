@@ -48,6 +48,9 @@ export const IPC_CHANNELS = {
   AUTOMATION_UPDATE: 'automation:update',
   AUTOMATION_DELETE: 'automation:delete',
   AUTOMATION_HISTORY: 'automation:history',
+  AUTOMATION_TOGGLE: 'automation:toggle',
+  AUTOMATION_RUN_NOW: 'automation:runNow',
+  AUTOMATION_RUN_EVENT: 'automation:runEvent',
 
   // Settings
   SETTINGS_GET: 'settings:get',
@@ -230,6 +233,14 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.AUTOMATION_HISTORY]: {
     input: { id: string; limit?: number }
     output: { runs: AutomationRun[] }
+  }
+  [IPC_CHANNELS.AUTOMATION_TOGGLE]: {
+    input: { id: string; status: 'active' | 'paused' }
+    output: { success: boolean; status: 'active' | 'paused' }
+  }
+  [IPC_CHANNELS.AUTOMATION_RUN_NOW]: {
+    input: { id: string }
+    output: { run: AutomationRun }
   }
 
   // Settings
@@ -418,6 +429,11 @@ export interface AutomationInfo {
   status: 'active' | 'paused' | 'completed'
   lastRun?: string
   nextRun?: string
+  /** Effective window for the schedule (生效期). */
+  validFrom?: string
+  validTo?: string
+  /** Result of the most recent run, used for the completed-list tag. */
+  lastRunStatus?: 'success' | 'failure'
 }
 
 export interface AutomationCreateInput {

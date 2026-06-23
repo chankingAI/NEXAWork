@@ -39,15 +39,6 @@
   --color-border: var(--color-border);
   --color-border-focus: var(--color-border-focus);
 
-  /* Spacing (4px base) */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
-  --spacing-2xl: 32px;
-  --spacing-3xl: 48px;
-
   /* Border radius */
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -67,8 +58,9 @@
   --duration-slow: 350ms;
 
   /* Font family */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
-    "Segoe UI", Roboto, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI",
+    Roboto, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
