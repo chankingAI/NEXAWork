@@ -6,6 +6,7 @@ import type {
   ModelInfo,
   ExpertInfo,
   SkillInfo,
+  SkillImportSourceType,
   AutomationInfo,
   AutomationRun,
   IPCError,
@@ -41,6 +42,21 @@ function generateId(): string {
 
 function createError(code: string, message: string): IPCError {
   return { code, message }
+}
+
+/**
+ * Derive a human-friendly skill name from an import source string.
+ * file → basename without extension; url/repo → last path segment.
+ */
+function deriveSkillName(
+  source: string,
+  sourceType: SkillImportSourceType,
+): string {
+  const cleaned = source.replace(/[?#].*$/, '').replace(/\/+$/, '')
+  const segment = cleaned.split(/[/\\]/).filter(Boolean).pop() ?? cleaned
+  const base = sourceType === 'file' ? segment.replace(/\.[^.]+$/, '') : segment
+  const name = base.replace(/\.git$/, '').trim()
+  return name.length > 0 ? name : '导入的技能'
 }
 
 /**
@@ -152,35 +168,168 @@ function seedExperts(): void {
   }
 }
 
-// Seed default skills
+// Seed default skills — three tiers mirror the N15 panel categories:
+// builtin (bundledSkills.ts), installed (.claude/skills/ + recorder), available
+// (marketplace). Detail metadata powers the SkillDetail panel.
 function seedSkills(): void {
   const defaults: SkillInfo[] = [
+    // ── Builtin (bundled) ──
     {
       id: 'skill-web-search',
       name: 'Web Search',
-      description: 'Search the web for information',
+      description: 'Search the web for up-to-date information',
       category: 'tools',
       installed: true,
       enabled: true,
       version: '1.0.0',
+      source: 'builtin',
+      icon: '🔍',
+      color: '#3B82F6',
+      author: 'NexaWork',
+      longDescription:
+        'Query the web for current information and summarise the results inline. Backed by the WebSearch tool.',
+      permissions: ['network'],
+      config: [
+        {
+          key: 'maxResults',
+          label: '最大结果数',
+          type: 'number',
+          value: 5,
+          description: '每次搜索返回的结果数量',
+        },
+      ],
     },
     {
       id: 'skill-file-edit',
       name: 'File Edit',
-      description: 'Read and edit files',
+      description: 'Read and edit files in the workspace',
       category: 'tools',
       installed: true,
       enabled: true,
       version: '1.0.0',
+      source: 'builtin',
+      icon: '📝',
+      color: '#10B981',
+      author: 'NexaWork',
+      longDescription:
+        'Read, create and modify files using the FileRead / FileEdit / FileWrite tools.',
+      permissions: ['filesystem:read', 'filesystem:write'],
     },
     {
       id: 'skill-code-run',
       name: 'Code Runner',
-      description: 'Execute code in sandbox',
+      description: 'Execute code in a sandboxed shell',
       category: 'development',
       installed: true,
       enabled: true,
       version: '1.0.0',
+      source: 'builtin',
+      icon: '⚡',
+      color: '#F59E0B',
+      author: 'NexaWork',
+      longDescription:
+        'Run shell commands and scripts inside the sandbox runtime via the Bash tool.',
+      permissions: ['shell', 'filesystem:read'],
+    },
+    {
+      id: 'skill-creation-guide',
+      name: '技能创建指南',
+      description: 'Step-by-step guide for authoring new skills',
+      category: 'guide',
+      installed: true,
+      enabled: true,
+      version: '1.0.0',
+      source: 'builtin',
+      icon: '📚',
+      color: '#8B5CF6',
+      author: 'NexaWork',
+      longDescription:
+        'Walks through SKILL.md structure, frontmatter, allowed tools and packaging so you can publish your own skills.',
+      permissions: [],
+    },
+    // ── Installed (custom / recorder) ──
+    {
+      id: 'skill-self-improving-agent',
+      name: 'self-improving-agent',
+      description: 'Agent that refines its own prompts from feedback',
+      category: 'agent',
+      installed: true,
+      enabled: false,
+      version: '0.3.0',
+      source: 'installed',
+      icon: '🤖',
+      color: '#EC4899',
+      author: '.claude/skills',
+      longDescription:
+        'Learns from operation memory to iteratively improve its instructions. Loaded from .claude/skills/.',
+      permissions: ['filesystem:read', 'filesystem:write'],
+      config: [
+        {
+          key: 'autoApply',
+          label: '自动应用改进',
+          type: 'boolean',
+          value: false,
+          description: '无需确认即应用自我改进',
+        },
+      ],
+    },
+    {
+      id: 'skill-recorded-onboarding',
+      name: '录制：新员工入职',
+      description: 'Replayable workflow captured by the recorder',
+      category: 'recorder',
+      installed: true,
+      enabled: true,
+      version: '1.0.0',
+      source: 'installed',
+      icon: '🎬',
+      color: '#06B6D4',
+      author: 'Recorder',
+      longDescription:
+        'A recorded operation sequence promoted to a reusable skill. Replays the onboarding workflow.',
+      permissions: ['filesystem:read'],
+    },
+    // ── Available (marketplace) ──
+    {
+      id: 'skill-brave-search-cli',
+      name: 'Brave Search CLI',
+      description: 'Privacy-first web search via the Brave API',
+      category: 'tools',
+      installed: false,
+      enabled: false,
+      version: '2.1.0',
+      source: 'available',
+      icon: '🦁',
+      color: '#F97316',
+      author: 'Community',
+      longDescription:
+        'Search the web through the Brave Search API. Requires an API key configured below.',
+      permissions: ['network'],
+      config: [
+        {
+          key: 'apiKey',
+          label: 'Brave API Key',
+          type: 'string',
+          value: '',
+          description: '从 brave.com/search/api 获取',
+        },
+      ],
+    },
+    {
+      id: 'skill-github-pr-review',
+      name: 'GitHub PR Review',
+      description: 'Automated pull-request review and summaries',
+      category: 'development',
+      installed: false,
+      enabled: false,
+      version: '1.4.2',
+      source: 'available',
+      icon: '🐙',
+      color: '#6366F1',
+      author: 'Community',
+      longDescription:
+        'Fetches a pull request, reviews the diff and posts structured feedback.',
+      permissions: ['network'],
     },
   ]
   for (const skill of defaults) {
@@ -628,13 +777,31 @@ export function registerIPCHandlers(): void {
   // === Skills ===
   ipcMain.handle(
     IPC_CHANNELS.SKILL_LIST,
-    async (_event, input: { category?: string; installed?: boolean }) => {
+    async (
+      _event,
+      input: {
+        category?: string
+        installed?: boolean
+        source?: 'builtin' | 'installed' | 'available'
+      },
+    ) => {
       let list = Array.from(skills.values())
       if (input?.category)
         list = list.filter(s => s.category === input.category)
       if (input?.installed !== undefined)
         list = list.filter(s => s.installed === input.installed)
+      if (input?.source) list = list.filter(s => s.source === input.source)
       return { skills: list }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_GET,
+    async (_event, input: { skillId: string }) => {
+      const skill = skills.get(input.skillId)
+      if (!skill)
+        throw createError('NOT_FOUND', `Skill ${input.skillId} not found`)
+      return skill
     },
   )
 
@@ -645,8 +812,48 @@ export function registerIPCHandlers(): void {
       if (skill) {
         skill.installed = true
         skill.enabled = true
+        if (skill.source === 'available') skill.source = 'installed'
       }
       return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_IMPORT,
+    async (
+      _event,
+      input: { source: string; sourceType: SkillImportSourceType },
+    ) => {
+      const trimmed = (input?.source ?? '').trim()
+      if (!trimmed) {
+        return {
+          success: false,
+          message: '导入来源不能为空',
+        }
+      }
+      const id = `skill-imported-${generateId()}`
+      const name = deriveSkillName(trimmed, input.sourceType)
+      const skill: SkillInfo = {
+        id,
+        name,
+        description: `Imported from ${input.sourceType}: ${trimmed}`,
+        category: 'imported',
+        installed: true,
+        enabled: true,
+        version: '1.0.0',
+        source: 'installed',
+        icon: '📦',
+        color: '#0EA5E9',
+        author: `import:${input.sourceType}`,
+        longDescription: `Skill imported from a ${input.sourceType} source (${trimmed}).`,
+        permissions: [],
+      }
+      skills.set(id, skill)
+      return {
+        success: true,
+        skillId: id,
+        message: `已导入技能「${name}」`,
+      }
     },
   )
 

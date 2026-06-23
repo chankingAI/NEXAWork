@@ -18,7 +18,13 @@ import type { MarketplaceTab } from '../components/ExpertListPage'
 import { defaultExperts } from '../components/ExpertListPage'
 import { builtinModels } from '../components/ModelSelector'
 import { defaultTeams, generateTeamIntro } from '../components/ExpertTeamDialog'
+import { defaultSkills, resolveSkillSource } from '../components/skillCatalog'
 import type { Session, SceneType } from '../../shared/session-types'
+import type {
+  SkillInfo,
+  SkillSource,
+  SkillImportSourceType,
+} from '../../shared/ipc-channels'
 
 // ─── Persistence helpers ──────────────────────────────────────
 const CHAT_MODE_KEY = 'nexawork-chat-mode'
@@ -65,6 +71,44 @@ function persistRecentExperts(ids: string[]): void {
 
 function modelName(modelId: string): string {
   return builtinModels.find(m => m.id === modelId)?.name ?? 'Auto'
+}
+
+// ─── Skill enabled-state persistence ──────────────────────────
+const SKILL_ENABLED_KEY = 'nexawork-skill-enabled'
+
+function loadSkillEnabledOverrides(): Record<string, boolean> {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const stored = localStorage.getItem(SKILL_ENABLED_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, boolean>
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return {}
+}
+
+function persistSkillEnabledOverride(id: string, enabled: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const current = loadSkillEnabledOverrides()
+    current[id] = enabled
+    localStorage.setItem(SKILL_ENABLED_KEY, JSON.stringify(current))
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Apply persisted enable/disable overrides onto a freshly-loaded catalog. */
+function applySkillOverrides(skills: SkillInfo[]): SkillInfo[] {
+  const overrides = loadSkillEnabledOverrides()
+  return skills.map(s =>
+    s.id in overrides ? { ...s, enabled: overrides[s.id]! } : s,
+  )
 }
 
 // ─── Seed sessions (in-memory until backed by IPC/SQLite) ──────
@@ -138,6 +182,14 @@ export interface AppState {
   sessions: Session[]
   sessionSearchQuery: string
 
+  // Skills (N15)
+  skillList: SkillInfo[]
+  skillCategory: SkillSource
+  skillSearchQuery: string
+  selectedSkillId: string | null
+  skillImporting: boolean
+  skillImportMessage: string | null
+
   // Quick-action / welcome prefill consumed by ChatInput
   pendingInput: string | null
 
@@ -175,6 +227,18 @@ export interface AppState {
   archiveSession: (id: string) => void
   setSessionSearchQuery: (query: string) => void
   consumePendingInput: () => void
+
+  // ── Skill actions (N15) ──
+  loadSkills: () => Promise<void>
+  setSkillCategory: (category: SkillSource) => void
+  setSkillSearchQuery: (query: string) => void
+  selectSkill: (id: string | null) => void
+  toggleSkill: (id: string, enabled: boolean) => void
+  importSkill: (
+    source: string,
+    sourceType: SkillImportSourceType,
+  ) => Promise<{ success: boolean; message: string; skillId?: string }>
+  clearSkillImportMessage: () => void
 }
 
 const sceneToSceneType: Record<SceneId, SceneType> = {
@@ -217,6 +281,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Sessions
   sessions: seedSessions(),
   sessionSearchQuery: '',
+
+  // Skills (N15) — hydrated from the default catalog with persisted
+  // enable/disable overrides; loadSkills() refreshes from IPC when available.
+  skillList: applySkillOverrides(defaultSkills),
+  skillCategory: 'builtin',
+  skillSearchQuery: '',
+  selectedSkillId: null,
+  skillImporting: false,
+  skillImportMessage: null,
 
   // Prefill
   pendingInput: null,
@@ -340,4 +413,110 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   setSessionSearchQuery: query => set({ sessionSearchQuery: query }),
   consumePendingInput: () => set({ pendingInput: null }),
+
+  // ── Skills (N15) ──
+  loadSkills: async () => {
+    const api =
+      typeof window !== 'undefined' ? window.nexawork?.skill : undefined
+    if (!api) {
+      set({ skillList: applySkillOverrides(defaultSkills) })
+      return
+    }
+    try {
+      const result = await api.list()
+      const skills =
+        result?.skills && result.skills.length > 0
+          ? result.skills
+          : defaultSkills
+      set({ skillList: applySkillOverrides(skills) })
+    } catch {
+      set({ skillList: applySkillOverrides(defaultSkills) })
+    }
+  },
+  setSkillCategory: category =>
+    set({ skillCategory: category, selectedSkillId: null }),
+  setSkillSearchQuery: query => set({ skillSearchQuery: query }),
+  selectSkill: id => set({ selectedSkillId: id }),
+  toggleSkill: (id, enabled) => {
+    persistSkillEnabledOverride(id, enabled)
+    set(state => ({
+      skillList: state.skillList.map(s =>
+        s.id === id ? { ...s, enabled } : s,
+      ),
+    }))
+    if (typeof window !== 'undefined') {
+      window.nexawork?.skill?.toggle({ skillId: id, enabled })?.catch(() => {})
+    }
+  },
+  importSkill: async (source, sourceType) => {
+    const trimmed = source.trim()
+    if (!trimmed) {
+      const message = '导入来源不能为空'
+      set({ skillImportMessage: message })
+      return { success: false, message }
+    }
+    set({ skillImporting: true, skillImportMessage: null })
+    const api =
+      typeof window !== 'undefined' ? window.nexawork?.skill : undefined
+    if (!api) {
+      // Offline fallback: synthesise an imported skill locally.
+      const id = `skill-imported-${Date.now()}`
+      const name =
+        trimmed
+          .replace(/[?#].*$/, '')
+          .replace(/\/+$/, '')
+          .split(/[/\\]/)
+          .filter(Boolean)
+          .pop()
+          ?.replace(/\.git$/, '')
+          ?.replace(/\.[^.]+$/, '') || '导入的技能'
+      const skill: SkillInfo = {
+        id,
+        name,
+        description: `Imported from ${sourceType}: ${trimmed}`,
+        category: 'imported',
+        installed: true,
+        enabled: true,
+        version: '1.0.0',
+        source: 'installed',
+        icon: '📦',
+        color: '#0EA5E9',
+        author: `import:${sourceType}`,
+        permissions: [],
+      }
+      const message = `已导入技能「${name}」`
+      set(state => ({
+        skillList: [...state.skillList, skill],
+        skillImporting: false,
+        skillImportMessage: message,
+        skillCategory: 'installed',
+      }))
+      return { success: true, skillId: id, message }
+    }
+    try {
+      const result = await api.import({ source: trimmed, sourceType })
+      if (result?.success) {
+        await get().loadSkills()
+        set({
+          skillImporting: false,
+          skillImportMessage: result.message,
+          skillCategory: 'installed',
+        })
+        return result
+      }
+      set({
+        skillImporting: false,
+        skillImportMessage: result?.message ?? '导入失败',
+      })
+      return {
+        success: false,
+        message: result?.message ?? '导入失败',
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '导入失败'
+      set({ skillImporting: false, skillImportMessage: message })
+      return { success: false, message }
+    }
+  },
+  clearSkillImportMessage: () => set({ skillImportMessage: null }),
 }))

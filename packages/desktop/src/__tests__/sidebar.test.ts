@@ -17,16 +17,18 @@ describe('NavigationId Types', () => {
       'assistant',
       'projects',
       'experts',
+      'skills',
       'automation',
       'more',
       'library',
       'inspiration',
       'settings',
     ]
-    expect(validIds).toHaveLength(8)
+    expect(validIds).toHaveLength(9)
     expect(validIds).toContain('assistant')
     expect(validIds).toContain('projects')
     expect(validIds).toContain('experts')
+    expect(validIds).toContain('skills')
     expect(validIds).toContain('automation')
     expect(validIds).toContain('more')
     expect(validIds).toContain('library')
@@ -169,12 +171,13 @@ describe('Navigation Items', () => {
     { id: 'assistant', label: '助理' },
     { id: 'projects', label: '项目' },
     { id: 'experts', label: '专家' },
+    { id: 'skills', label: '技能' },
     { id: 'automation', label: '自动化' },
     { id: 'more', label: '更多' },
   ]
 
-  test('five main navigation items exist', () => {
-    expect(items).toHaveLength(5)
+  test('six main navigation items exist', () => {
+    expect(items).toHaveLength(6)
   })
 
   test('each item has id and label', () => {
@@ -201,6 +204,7 @@ describe('Navigation State', () => {
       assistant: 'ChatView',
       projects: 'ProjectsView',
       experts: 'ExpertsView',
+      skills: 'SkillSearchPanel',
       automation: 'AutomationView',
       more: 'MoreMenu',
       library: 'LibraryView',

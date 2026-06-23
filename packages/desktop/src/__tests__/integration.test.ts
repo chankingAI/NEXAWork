@@ -205,7 +205,7 @@ describe('Integration: Skill System', () => {
   test('list → execute → toggle → verify', async () => {
     // List all
     const list = await mockHandlers.get('skill:list')!({}, {})
-    expect(list.skills.length).toBe(3)
+    expect(list.skills.length).toBe(8)
 
     // Execute
     const exec = await mockHandlers.get('skill:execute')!(
@@ -222,7 +222,7 @@ describe('Integration: Skill System', () => {
 
     // Verify skill is still listable (enabled state changed internally)
     const list2 = await mockHandlers.get('skill:list')!({}, {})
-    expect(list2.skills.length).toBe(3)
+    expect(list2.skills.length).toBe(8)
   })
 
   test('delete skill → verify removal', async () => {

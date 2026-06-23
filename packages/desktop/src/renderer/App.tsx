@@ -4,6 +4,7 @@ import { SceneTabs } from './components/SceneTabs';
 import { WelcomePage, useOnboarding } from './components/WelcomePage';
 import { ChatView } from './components/ChatView';
 import { ExpertsView } from './components/ExpertsView';
+import { SkillSearchPanel } from './components/SkillSearchPanel';
 import { ComingSoonView } from './components/ComingSoonView';
 import { useAppStore } from './store/appStore';
 
@@ -47,6 +48,8 @@ export function App() {
         );
       case 'experts':
         return <ExpertsView />;
+      case 'skills':
+        return <SkillSearchPanel />;
       default:
         return <ComingSoonView nav={activeNav} />;
     }
