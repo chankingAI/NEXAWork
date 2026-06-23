@@ -260,12 +260,12 @@ describe('WelcomePage Props', () => {
   })
 
   test('scene change callback fires', () => {
-    let scene: WelcomeScene = 'office'
+    let scene = 'office' as WelcomeScene
     const onChange = (s: WelcomeScene) => {
       scene = s
     }
     onChange('coding')
-    expect(scene).toBe('coding')
+    expect(scene as string).toBe('coding')
   })
 
   test('quick action callback fires with prompt', () => {
