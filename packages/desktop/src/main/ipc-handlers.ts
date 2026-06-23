@@ -10,6 +10,7 @@ import type {
   DesktopPermissionMode,
   PermissionDecisionAction,
   PermissionScope,
+  AutomationCreateInput,
 } from '../shared/ipc-channels'
 import {
   initializeEngine,
@@ -696,17 +697,7 @@ export function registerIPCHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_CREATE,
-    async (
-      _event,
-      input: {
-        name: string
-        prompt: string
-        cron: string
-        workspace: string
-        startDate?: string
-        endDate?: string
-      },
-    ) => {
+    async (_event, input: AutomationCreateInput) => {
       const automation = automationManager.create(input)
       return { id: automation.id }
     },

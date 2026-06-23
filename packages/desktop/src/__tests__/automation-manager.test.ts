@@ -177,6 +177,26 @@ describe('AutomationManager', () => {
     expect(mgr.list().some(x => x.id === a.id)).toBe(true)
   })
 
+  test('create round-trips the N19 execution context fields', () => {
+    const a = mgr.create({
+      name: 'Ctx',
+      prompt: 'p',
+      cron: '0 8 * * *',
+      workspace: 'ws',
+      connector: 'github',
+      model: 'claude-sonnet',
+      skill: 'skill-x',
+      expert: 'frontend-expert',
+      permissionMode: 'full',
+    })
+    const stored = mgr.list().find(x => x.id === a.id)
+    expect(stored?.connector).toBe('github')
+    expect(stored?.model).toBe('claude-sonnet')
+    expect(stored?.skill).toBe('skill-x')
+    expect(stored?.expert).toBe('frontend-expert')
+    expect(stored?.permissionMode).toBe('full')
+  })
+
   test('toggle pauses (clears nextRun) and resumes (recomputes)', () => {
     const a = mgr.create({
       name: 'T',

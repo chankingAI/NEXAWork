@@ -3,12 +3,7 @@ import type { AutomationInfo } from '../shared/ipc-channels'
 import {
   splitAutomations,
   scheduledDotColor,
-  validateAutomationForm,
-  isFormValid,
-  toCreateInput,
   automationTemplates,
-  emptyForm,
-  type AutomationForm,
 } from '../renderer/components/AutomationPanel'
 
 function make(
@@ -51,84 +46,6 @@ describe('scheduledDotColor', () => {
   test('active is green, paused is orange', () => {
     expect(scheduledDotColor('active')).toBe('var(--color-accent-green)')
     expect(scheduledDotColor('paused')).toBe('var(--color-accent-orange)')
-  })
-})
-
-describe('validateAutomationForm', () => {
-  const valid: AutomationForm = {
-    name: 'Daily Report',
-    prompt: 'generate report',
-    cron: '0 8 * * *',
-    workspace: '产品开发',
-    startDate: '',
-    endDate: '',
-  }
-
-  test('valid form has no errors', () => {
-    expect(validateAutomationForm(valid)).toHaveLength(0)
-    expect(isFormValid(valid)).toBe(true)
-  })
-
-  test('missing name', () => {
-    expect(validateAutomationForm({ ...valid, name: '  ' })).toContain(
-      '请填写任务名称',
-    )
-  })
-
-  test('missing prompt', () => {
-    expect(validateAutomationForm({ ...valid, prompt: '' })).toContain(
-      '请填写任务指令',
-    )
-  })
-
-  test('invalid cron arity', () => {
-    expect(validateAutomationForm({ ...valid, cron: '0 8 * *' })).toContain(
-      'Cron 表达式需为 5 段',
-    )
-  })
-
-  test('missing workspace', () => {
-    expect(validateAutomationForm({ ...valid, workspace: '' })).toContain(
-      '请选择关联空间',
-    )
-  })
-
-  test('empty form is invalid', () => {
-    expect(isFormValid(emptyForm)).toBe(false)
-  })
-})
-
-describe('toCreateInput', () => {
-  test('trims fields and omits empty dates', () => {
-    const input = toCreateInput({
-      name: '  X  ',
-      prompt: '  do  ',
-      cron: ' 0 8 * * * ',
-      workspace: ' ws ',
-      startDate: '',
-      endDate: '',
-    })
-    expect(input).toEqual({
-      name: 'X',
-      prompt: 'do',
-      cron: '0 8 * * *',
-      workspace: 'ws',
-      startDate: undefined,
-      endDate: undefined,
-    })
-  })
-
-  test('keeps provided dates', () => {
-    const input = toCreateInput({
-      name: 'X',
-      prompt: 'do',
-      cron: '0 8 * * *',
-      workspace: 'ws',
-      startDate: '2026-06-01',
-      endDate: '2026-12-31',
-    })
-    expect(input.startDate).toBe('2026-06-01')
-    expect(input.endDate).toBe('2026-12-31')
   })
 })
 
