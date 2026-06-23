@@ -37,7 +37,9 @@ export const IPC_CHANNELS = {
 
   // Skill
   SKILL_LIST: 'skill:list',
+  SKILL_GET: 'skill:get',
   SKILL_INSTALL: 'skill:install',
+  SKILL_IMPORT: 'skill:import',
   SKILL_TOGGLE: 'skill:toggle',
   SKILL_EXECUTE: 'skill:execute',
   SKILL_DELETE: 'skill:delete',
@@ -182,12 +184,20 @@ export interface IPCRequestMap {
 
   // Skill
   [IPC_CHANNELS.SKILL_LIST]: {
-    input: { category?: string; installed?: boolean }
+    input: { category?: string; installed?: boolean; source?: SkillSource }
     output: { skills: SkillInfo[] }
+  }
+  [IPC_CHANNELS.SKILL_GET]: {
+    input: { skillId: string }
+    output: SkillInfo
   }
   [IPC_CHANNELS.SKILL_INSTALL]: {
     input: { skillId: string }
     output: { success: boolean }
+  }
+  [IPC_CHANNELS.SKILL_IMPORT]: {
+    input: { source: string; sourceType: SkillImportSourceType }
+    output: { success: boolean; skillId?: string; message: string }
   }
   [IPC_CHANNELS.SKILL_TOGGLE]: {
     input: { skillId: string; enabled: boolean }
@@ -321,6 +331,22 @@ export interface ExpertInfo {
   tags: string[]
 }
 
+/** Top-level classification for the three skill panel tabs. */
+export type SkillSource = 'builtin' | 'installed' | 'available'
+
+/** Where an imported skill is loaded from. */
+export type SkillImportSourceType = 'file' | 'url' | 'repo'
+
+/** A configurable parameter exposed in the skill detail panel. */
+export interface SkillConfigParam {
+  key: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  value: string | number | boolean
+  options?: string[]
+  description?: string
+}
+
 export interface SkillInfo {
   id: string
   name: string
@@ -329,6 +355,14 @@ export interface SkillInfo {
   installed: boolean
   enabled: boolean
   version: string
+  // N15 detail metadata (optional for backward compatibility)
+  source?: SkillSource
+  icon?: string
+  color?: string
+  author?: string
+  longDescription?: string
+  permissions?: string[]
+  config?: SkillConfigParam[]
 }
 
 export interface AutomationInfo {

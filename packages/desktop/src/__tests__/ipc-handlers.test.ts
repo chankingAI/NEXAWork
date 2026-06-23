@@ -73,9 +73,11 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('expert:create')
     expect(registeredChannels).toContain('expert:recent')
 
-    // Skill (5)
+    // Skill (7)
     expect(registeredChannels).toContain('skill:list')
+    expect(registeredChannels).toContain('skill:get')
     expect(registeredChannels).toContain('skill:install')
+    expect(registeredChannels).toContain('skill:import')
     expect(registeredChannels).toContain('skill:toggle')
     expect(registeredChannels).toContain('skill:execute')
     expect(registeredChannels).toContain('skill:delete')
@@ -103,13 +105,13 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 39 channels registered', async () => {
+  test('total handler count: 41 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 5 automation + 3 settings + 4 window + 2 app = 39
-    expect(mockHandlers.size).toBe(39)
+    // 5 chat + 6 session + 4 model + 5 expert + 7 skill + 5 automation + 3 settings + 4 window + 2 app = 41
+    expect(mockHandlers.size).toBe(41)
   })
 })
 
@@ -352,7 +354,67 @@ describe('Handler Logic: Skill', () => {
   test('skill:list returns seeded skills', async () => {
     const handler = mockHandlers.get('skill:list')!
     const result = await handler({}, {})
-    expect(result.skills.length).toBe(3)
+    expect(result.skills.length).toBe(8)
+  })
+
+  test('skill:list filters by source tier', async () => {
+    const handler = mockHandlers.get('skill:list')!
+    const builtin = await handler({}, { source: 'builtin' })
+    const installed = await handler({}, { source: 'installed' })
+    const available = await handler({}, { source: 'available' })
+    expect(builtin.skills.length).toBe(4)
+    expect(installed.skills.length).toBe(2)
+    expect(available.skills.length).toBe(2)
+    expect(
+      builtin.skills.every((s: { source: string }) => s.source === 'builtin'),
+    ).toBe(true)
+  })
+
+  test('skill:get returns full skill detail', async () => {
+    const handler = mockHandlers.get('skill:get')!
+    const result = await handler({}, { skillId: 'skill-web-search' })
+    expect(result.id).toBe('skill-web-search')
+    expect(result.permissions).toContain('network')
+    expect(Array.isArray(result.config)).toBe(true)
+  })
+
+  test('skill:get throws on unknown skill', async () => {
+    const handler = mockHandlers.get('skill:get')!
+    expect(handler({}, { skillId: 'nope' })).rejects.toThrow()
+  })
+
+  test('skill:import adds an installed skill from a repo', async () => {
+    const importHandler = mockHandlers.get('skill:import')!
+    const result = await importHandler(
+      {},
+      { source: 'https://github.com/owner/cool-skill.git', sourceType: 'repo' },
+    )
+    expect(result.success).toBe(true)
+    expect(result.skillId).toBeDefined()
+
+    const listHandler = mockHandlers.get('skill:list')!
+    const list = await listHandler({}, {})
+    expect(list.skills.length).toBe(9)
+    const imported = list.skills.find(
+      (s: { id: string }) => s.id === result.skillId,
+    )
+    expect(imported.name).toBe('cool-skill')
+    expect(imported.source).toBe('installed')
+  })
+
+  test('skill:import rejects an empty source', async () => {
+    const importHandler = mockHandlers.get('skill:import')!
+    const result = await importHandler({}, { source: '  ', sourceType: 'file' })
+    expect(result.success).toBe(false)
+  })
+
+  test('skill:install promotes an available skill to installed', async () => {
+    const installHandler = mockHandlers.get('skill:install')!
+    await installHandler({}, { skillId: 'skill-brave-search-cli' })
+    const getHandler = mockHandlers.get('skill:get')!
+    const result = await getHandler({}, { skillId: 'skill-brave-search-cli' })
+    expect(result.installed).toBe(true)
+    expect(result.source).toBe('installed')
   })
 
   test('skill:execute returns result', async () => {

@@ -4,6 +4,8 @@ import type {
   StreamEvent,
   ModelConfig,
   AutomationCreateInput,
+  SkillSource,
+  SkillImportSourceType,
 } from '../shared/ipc-channels'
 
 /**
@@ -101,11 +103,20 @@ const nexaworkAPI = {
 
   // === Skill ===
   skill: {
-    list: (input?: { category?: string; installed?: boolean }) =>
-      ipcRenderer.invoke(IPC_CHANNELS.SKILL_LIST, input ?? {}),
+    list: (input?: {
+      category?: string
+      installed?: boolean
+      source?: SkillSource
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SKILL_LIST, input ?? {}),
+
+    get: (input: { skillId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_GET, input),
 
     install: (input: { skillId: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.SKILL_INSTALL, input),
+
+    import: (input: { source: string; sourceType: SkillImportSourceType }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_IMPORT, input),
 
     toggle: (input: { skillId: string; enabled: boolean }) =>
       ipcRenderer.invoke(IPC_CHANNELS.SKILL_TOGGLE, input),
