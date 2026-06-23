@@ -19,6 +19,7 @@ import type {
   IPCError,
   ChatMessage,
 } from '../../shared/ipc-channels'
+import { permissionManager } from './permission-manager'
 
 // ===== Type Definitions =====
 
@@ -672,31 +673,15 @@ export function getRegisteredTools(): ToolDefinition[] {
 }
 
 /**
- * Request tool permission via IPC
+ * Request tool permission via IPC.
+ * Delegates to the PermissionManager, which handles mode/session rules, the
+ * renderer round-trip, the 60s timeout default-deny, and permission logging.
  */
 export async function requestToolPermission(
   win: BrowserWindow | null,
   tool: { name: string; input: Record<string, unknown> },
 ): Promise<boolean> {
-  if (!win || win.isDestroyed()) return false
-
-  // Send permission request to renderer
-  return new Promise(resolve => {
-    const channel = `tool:permission:${generateId()}`
-    win.webContents.send('tool:permission:request', {
-      channel,
-      tool: tool.name,
-      input: tool.input,
-    })
-
-    // Timeout after 60s — default deny
-    const timeout = setTimeout(() => resolve(false), 60000)
-
-    // TODO: Listen for response from renderer via IPC
-    // For now, auto-approve in dev mode
-    clearTimeout(timeout)
-    resolve(true)
-  })
+  return permissionManager.requestPermission(win, tool)
 }
 
 // ===== Utilities =====
