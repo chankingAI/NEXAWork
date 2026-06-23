@@ -48,6 +48,18 @@ export const IPC_CHANNELS = {
   AUTOMATION_UPDATE: 'automation:update',
   AUTOMATION_DELETE: 'automation:delete',
   AUTOMATION_HISTORY: 'automation:history',
+  AUTOMATION_PAUSE: 'automation:pause',
+  AUTOMATION_RESUME: 'automation:resume',
+  AUTOMATION_RUN_NOW: 'automation:runNow',
+  AUTOMATION_CHANGED: 'automation:changed', // push: main → renderer
+
+  // Project
+  PROJECT_LIST: 'project:list',
+  PROJECT_GET: 'project:get',
+  PROJECT_CREATE: 'project:create',
+  PROJECT_UPDATE: 'project:update',
+  PROJECT_DELETE: 'project:delete',
+  PROJECT_TEMPLATES: 'project:templates',
 
   // Settings
   SETTINGS_GET: 'settings:get',
@@ -223,6 +235,44 @@ export interface IPCRequestMap {
     input: { id: string; limit?: number }
     output: { runs: AutomationRun[] }
   }
+  [IPC_CHANNELS.AUTOMATION_PAUSE]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.AUTOMATION_RESUME]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.AUTOMATION_RUN_NOW]: {
+    input: { id: string }
+    output: { run: AutomationRun }
+  }
+
+  // Project
+  [IPC_CHANNELS.PROJECT_LIST]: {
+    input: { query?: string }
+    output: { projects: ProjectInfo[] }
+  }
+  [IPC_CHANNELS.PROJECT_GET]: {
+    input: { id: string }
+    output: ProjectInfo
+  }
+  [IPC_CHANNELS.PROJECT_CREATE]: {
+    input: ProjectCreateInput
+    output: { id: string; project: ProjectInfo }
+  }
+  [IPC_CHANNELS.PROJECT_UPDATE]: {
+    input: { id: string; name?: string; description?: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PROJECT_DELETE]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PROJECT_TEMPLATES]: {
+    input: Record<string, never>
+    output: { templates: ProjectTemplate[] }
+  }
 
   // Settings
   [IPC_CHANNELS.SETTINGS_GET]: {
@@ -335,11 +385,20 @@ export interface AutomationInfo {
   id: string
   name: string
   prompt: string
+  /** Serialized schedule (see schedule.ts: serializeSchedule). */
   cron: string
   workspace: string
   status: 'active' | 'paused' | 'completed'
+  /** ISO date the automation becomes active (inclusive). */
+  validFrom?: string
+  /** ISO date the automation stops running (inclusive). */
+  validTo?: string
   lastRun?: string
+  /** Result of the most recent run, for the completed list label. */
+  lastRunStatus?: 'success' | 'failure'
   nextRun?: string
+  connector?: string
+  createdAt?: string
 }
 
 export interface AutomationCreateInput {
@@ -349,6 +408,7 @@ export interface AutomationCreateInput {
   workspace: string
   startDate?: string
   endDate?: string
+  connector?: string
 }
 
 export interface AutomationRun {
@@ -359,6 +419,41 @@ export interface AutomationRun {
   completedAt?: string
   output?: string
   error?: string
+}
+
+export interface ProjectInfo {
+  id: string
+  name: string
+  description: string
+  /** Template id used to seed the project, or 'blank'. */
+  template: string
+  /** Associated local directory (git repo root) if any. */
+  path: string
+  icon?: string
+  color?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProjectCreateInput {
+  name: string
+  description?: string
+  template?: string
+  path?: string
+  icon?: string
+  color?: string
+  /** Run `git init` in the target directory after creation. */
+  initGit?: boolean
+}
+
+export interface ProjectTemplate {
+  id: string
+  name: string
+  description: string
+  icon: string
+  color: string
+  /** Default prompts/checklist seeded into the project. */
+  presets: string[]
 }
 
 // --- Stream Events ---

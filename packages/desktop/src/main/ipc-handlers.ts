@@ -1,4 +1,7 @@
 import { ipcMain, BrowserWindow, app } from 'electron'
+import { join } from 'path'
+import { existsSync, mkdirSync } from 'fs'
+import { execFile } from 'child_process'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   ChatMessage,
@@ -7,9 +10,13 @@ import type {
   ExpertInfo,
   SkillInfo,
   AutomationInfo,
-  AutomationRun,
+  AutomationCreateInput,
+  ProjectInfo,
+  ProjectCreateInput,
   IPCError,
 } from '../shared/ipc-channels'
+import { computeNextRun, parseSchedule } from '../shared/schedule'
+import { PROJECT_TEMPLATES, getTemplate } from '../shared/project-templates'
 import {
   initializeEngine,
   getSessionEngine,
@@ -20,20 +27,25 @@ import {
   updateEngineConfig,
   removeSessionEngine,
 } from './backend/engine'
+import { initDatabase, type Database } from './backend/database'
+import { Scheduler, type AutomationExecutor } from './backend/scheduler'
 
 /**
  * NexaWork IPC Handler Registry
  * Centralized handler registration (Codex pattern: 63 methods)
  */
 
-// In-memory stores (will be replaced with SQLite in N10)
+// In-memory stores (sessions/experts/skills); automations & projects are
+// persisted via the Database layer below.
 const sessions: Map<string, SessionInfo> = new Map()
 const messages: Map<string, ChatMessage[]> = new Map()
 const experts: Map<string, ExpertInfo> = new Map()
 const skills: Map<string, SkillInfo> = new Map()
-const automations: Map<string, AutomationInfo> = new Map()
-const automationRuns: Map<string, AutomationRun[]> = new Map()
 let activeModel = 'auto'
+
+// Persistent storage + automation scheduler (initialized in registerIPCHandlers).
+let db: Database
+let scheduler: Scheduler
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -41,6 +53,71 @@ function generateId(): string {
 
 function createError(code: string, message: string): IPCError {
   return { code, message }
+}
+
+/**
+ * Resolve the on-disk persistence path from Electron's userData dir, falling
+ * back to in-memory when unavailable (e.g. unit tests mocking electron).
+ */
+function resolveDatabasePath(): string | null {
+  try {
+    const getPath = (app as { getPath?: (n: string) => string }).getPath
+    if (typeof getPath !== 'function') return null
+    const userData = getPath.call(app, 'userData')
+    return join(userData, 'nexawork.db.json')
+  } catch {
+    return null
+  }
+}
+
+/** Push a live "automations changed" event to every renderer window. */
+function broadcastAutomationChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.AUTOMATION_CHANGED)
+    }
+  }
+}
+
+/**
+ * Default automation executor: runs the stored prompt through the backend
+ * engine in a transient session. Failures are captured (not thrown) so the
+ * scheduler records them as failed runs.
+ */
+const defaultExecutor: AutomationExecutor = async automation => {
+  const sessionId = `auto-${automation.id}`
+  try {
+    const result = await executeQuery(sessionId, automation.prompt, {})
+    return { output: result.content }
+  } catch (err: unknown) {
+    const e = err as { message?: string }
+    return { error: e?.message ?? 'Automation execution failed' }
+  } finally {
+    removeSessionEngine(sessionId)
+  }
+}
+
+/** Compute the initial nextRun for a new automation given its valid range. */
+function computeInitialNextRun(
+  cron: string,
+  startDate?: string,
+): string | undefined {
+  const config = parseSchedule(cron)
+  if (!config) return undefined
+  const now = new Date()
+  const base =
+    startDate && new Date(startDate).getTime() > now.getTime()
+      ? new Date(startDate)
+      : now
+  const next = computeNextRun(config, base)
+  return next?.toISOString()
+}
+
+/** Run `git init` in `dir` (best-effort, promisified). */
+function gitInit(dir: string): Promise<void> {
+  return new Promise(resolve => {
+    execFile('git', ['init'], { cwd: dir }, () => resolve())
+  })
 }
 
 /**
@@ -194,9 +271,17 @@ export function registerIPCHandlers(): void {
   messages.clear()
   experts.clear()
   skills.clear()
-  automations.clear()
-  automationRuns.clear()
   activeModel = 'auto'
+
+  // Initialize persistent storage + automation scheduler.
+  db = initDatabase(resolveDatabasePath())
+  scheduler?.stop()
+  scheduler = new Scheduler(db, {
+    executor: defaultExecutor,
+    onChange: broadcastAutomationChanged,
+    intervalMs: 30_000,
+  })
+  scheduler.start()
 
   // Reset settings to defaults
   Object.keys(settingsStore).forEach(k => delete settingsStore[k])
@@ -680,64 +765,203 @@ export function registerIPCHandlers(): void {
     },
   )
 
-  // === Automation ===
+  // === Automation (N18/N19: persistent + scheduled) ===
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_LIST,
-    async (_event, input: { status?: string }) => {
-      let list = Array.from(automations.values())
-      if (input?.status) list = list.filter(a => a.status === input.status)
-      return { automations: list }
+    async (_event, input: { status?: AutomationInfo['status'] }) => {
+      return { automations: db.listAutomations(input?.status) }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_CREATE,
-    async (
-      _event,
-      input: { name: string; prompt: string; cron: string; workspace: string },
-    ) => {
+    async (_event, input: AutomationCreateInput) => {
+      if (!input.name?.trim())
+        throw createError('INVALID_INPUT', 'name is required')
+      if (!input.prompt?.trim())
+        throw createError('INVALID_INPUT', 'prompt is required')
+      if (!input.cron?.trim())
+        throw createError('INVALID_INPUT', 'schedule is required')
+
       const id = `auto-${generateId()}`
+      const now = new Date().toISOString()
       const automation: AutomationInfo = {
         id,
-        name: input.name,
+        name: input.name.trim(),
         prompt: input.prompt,
         cron: input.cron,
-        workspace: input.workspace,
+        workspace: input.workspace ?? '',
+        connector: input.connector,
         status: 'active',
-        nextRun: new Date(Date.now() + 3600000).toISOString(),
+        validFrom: input.startDate,
+        validTo: input.endDate,
+        nextRun: computeInitialNextRun(input.cron, input.startDate),
+        createdAt: now,
       }
-      automations.set(id, automation)
-      automationRuns.set(id, [])
+      db.insertAutomation(automation)
+      broadcastAutomationChanged()
       return { id }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_UPDATE,
-    async (_event, input: { id: string; updates: Record<string, unknown> }) => {
-      const automation = automations.get(input.id)
-      if (!automation)
+    async (_event, input: { id: string; updates: Partial<AutomationInfo> }) => {
+      const existing = db.getAutomation(input.id)
+      if (!existing)
         throw createError('NOT_FOUND', `Automation ${input.id} not found`)
-      Object.assign(automation, input.updates)
+      const updates = { ...input.updates }
+      // Recompute nextRun if the schedule changed.
+      if (updates.cron && updates.cron !== existing.cron) {
+        updates.nextRun = computeInitialNextRun(
+          updates.cron,
+          updates.validFrom ?? existing.validFrom,
+        )
+      }
+      db.updateAutomation(input.id, updates)
+      broadcastAutomationChanged()
       return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.AUTOMATION_PAUSE,
+    async (_event, input: { id: string }) => {
+      const existing = db.getAutomation(input.id)
+      if (!existing)
+        throw createError('NOT_FOUND', `Automation ${input.id} not found`)
+      db.updateAutomation(input.id, { status: 'paused' })
+      broadcastAutomationChanged()
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.AUTOMATION_RESUME,
+    async (_event, input: { id: string }) => {
+      const existing = db.getAutomation(input.id)
+      if (!existing)
+        throw createError('NOT_FOUND', `Automation ${input.id} not found`)
+      db.updateAutomation(input.id, {
+        status: 'active',
+        nextRun:
+          existing.nextRun ??
+          computeInitialNextRun(existing.cron, existing.validFrom),
+      })
+      broadcastAutomationChanged()
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.AUTOMATION_RUN_NOW,
+    async (_event, input: { id: string }) => {
+      const run = await scheduler.runNow(input.id)
+      if (!run)
+        throw createError('NOT_FOUND', `Automation ${input.id} not found`)
+      return { run }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_DELETE,
     async (_event, input: { id: string }) => {
-      automations.delete(input.id)
-      automationRuns.delete(input.id)
-      return { success: true }
+      const ok = db.deleteAutomation(input.id)
+      broadcastAutomationChanged()
+      return { success: ok }
     },
   )
 
   ipcMain.handle(
     IPC_CHANNELS.AUTOMATION_HISTORY,
     async (_event, input: { id: string; limit?: number }) => {
-      const limit = input.limit ?? 20
-      const runs = (automationRuns.get(input.id) ?? []).slice(-limit)
-      return { runs }
+      return { runs: db.listRuns(input.id, input.limit ?? 20) }
+    },
+  )
+
+  // === Project (N20: persistent + git init) ===
+  ipcMain.handle(IPC_CHANNELS.PROJECT_TEMPLATES, async () => {
+    return { templates: PROJECT_TEMPLATES }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_LIST,
+    async (_event, input: { query?: string }) => {
+      return { projects: db.listProjects(input?.query) }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_GET,
+    async (_event, input: { id: string }) => {
+      const project = db.getProject(input.id)
+      if (!project)
+        throw createError('NOT_FOUND', `Project ${input.id} not found`)
+      return project
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_CREATE,
+    async (_event, input: ProjectCreateInput) => {
+      if (!input.name?.trim())
+        throw createError('INVALID_INPUT', 'name is required')
+
+      const template = input.template ? getTemplate(input.template) : undefined
+      const id = `proj-${generateId()}`
+      const now = new Date().toISOString()
+      const project: ProjectInfo = {
+        id,
+        name: input.name.trim(),
+        description: input.description ?? template?.description ?? '',
+        template: input.template ?? 'blank',
+        path: input.path ?? '',
+        icon: input.icon ?? template?.icon ?? '📁',
+        color: input.color ?? template?.color ?? '#6B7280',
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      // Optionally create + git-init the local directory (best-effort).
+      if (input.path) {
+        try {
+          if (!existsSync(input.path))
+            mkdirSync(input.path, { recursive: true })
+          if (input.initGit) await gitInit(input.path)
+        } catch {
+          // Directory/git failures are non-fatal; project metadata is still saved.
+        }
+      }
+
+      db.insertProject(project)
+      return { id, project }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_UPDATE,
+    async (
+      _event,
+      input: { id: string; name?: string; description?: string },
+    ) => {
+      const existing = db.getProject(input.id)
+      if (!existing)
+        throw createError('NOT_FOUND', `Project ${input.id} not found`)
+      const updates: Partial<ProjectInfo> = {
+        updatedAt: new Date().toISOString(),
+      }
+      if (input.name !== undefined) updates.name = input.name.trim()
+      if (input.description !== undefined)
+        updates.description = input.description
+      db.updateProject(input.id, updates)
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_DELETE,
+    async (_event, input: { id: string }) => {
+      return { success: db.deleteProject(input.id) }
     },
   )
 

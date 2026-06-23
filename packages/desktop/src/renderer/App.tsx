@@ -4,6 +4,8 @@ import { Sidebar, type NavigationId } from './components/Sidebar';
 import { SceneTabs, useScene } from './components/SceneTabs';
 import { WelcomeView } from './components/WelcomeView';
 import { ChatView } from './components/ChatView';
+import { AutomationPanel } from './components/AutomationPanel';
+import { ProjectPage } from './components/ProjectPage';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -61,7 +63,11 @@ export function App() {
 
           {/* Main Content */}
           <div className="flex flex-1 overflow-hidden">
-            {activeSessionId ? (
+            {activeNav === 'automation' ? (
+              <AutomationPanel />
+            ) : activeNav === 'projects' ? (
+              <ProjectPage />
+            ) : activeSessionId ? (
               <ChatView sessionId={activeSessionId} />
             ) : (
               <WelcomeView onNewSession={handleNewSession} />
