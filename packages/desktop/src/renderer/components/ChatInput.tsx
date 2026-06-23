@@ -7,6 +7,8 @@ export interface ChatInputProps {
   isLoading?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  /** Optional toolbar rendered below the input (e.g. permission selector). */
+  toolbar?: React.ReactNode;
 }
 
 /**
@@ -23,6 +25,7 @@ export function ChatInput({
   isLoading = false,
   placeholder = '今天帮你做些什么？',
   disabled = false,
+  toolbar,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [showMention, setShowMention] = useState(false);
@@ -151,6 +154,13 @@ export function ChatInput({
             {isLoading ? <Square size={12} /> : <Send size={14} className="-translate-x-[1px]" />}
           </button>
         </div>
+
+        {/* Toolbar (permission selector, etc.) */}
+        {toolbar && (
+          <div className="mt-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">{toolbar}</div>
+          </div>
+        )}
 
         {/* Footer hint */}
         <p className="mt-1.5 text-center text-[11px] text-[var(--color-text-quaternary)]">

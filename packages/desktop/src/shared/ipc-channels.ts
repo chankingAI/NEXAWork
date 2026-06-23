@@ -73,6 +73,14 @@ export const IPC_CHANNELS = {
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
 
+  // Permission (N17)
+  PERMISSION_GET_MODE: 'permission:getMode',
+  PERMISSION_SET_MODE: 'permission:setMode',
+  PERMISSION_REQUEST: 'permission:request',
+  PERMISSION_RESPOND: 'permission:respond',
+  PERMISSION_LOG_LIST: 'permission:log:list',
+  PERMISSION_LOG_CLEAR: 'permission:log:clear',
+
   // App
   APP_VERSION: 'app:version',
   APP_PLATFORM: 'app:platform',
@@ -311,6 +319,32 @@ export interface IPCRequestMap {
     output: boolean
   }
 
+  // Permission (N17)
+  [IPC_CHANNELS.PERMISSION_GET_MODE]: {
+    input: Record<string, never>
+    output: { mode: DesktopPermissionMode; bypassAvailable: boolean }
+  }
+  [IPC_CHANNELS.PERMISSION_SET_MODE]: {
+    input: { mode: DesktopPermissionMode }
+    output: { success: boolean; mode: DesktopPermissionMode }
+  }
+  [IPC_CHANNELS.PERMISSION_RESPOND]: {
+    input: {
+      requestId: string
+      decision: PermissionDecisionAction
+      scope: PermissionScope
+    }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PERMISSION_LOG_LIST]: {
+    input: { limit?: number }
+    output: { entries: PermissionLogEntry[] }
+  }
+  [IPC_CHANNELS.PERMISSION_LOG_CLEAR]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+
   // App
   [IPC_CHANNELS.APP_VERSION]: {
     input: Record<string, never>
@@ -384,6 +418,50 @@ export interface SkillInfo {
   installed: boolean
   enabled: boolean
   version: string
+}
+
+// --- Permission Types (N17) ---
+
+/**
+ * Desktop-level permission mode shown in the toolbar selector.
+ * Maps to backend PermissionMode: 'default' -> 'default', 'full' -> 'bypassPermissions'.
+ */
+export type DesktopPermissionMode = 'default' | 'full'
+
+/** Risk level mirrored from backend src/types/permissions.ts RiskLevel. */
+export type PermissionRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
+
+/** User decision for a tool permission prompt. */
+export type PermissionDecisionAction = 'allow' | 'deny'
+
+/** Scope of an allow decision. */
+export type PermissionScope = 'once' | 'session'
+
+/**
+ * A pending permission request emitted from Main to Renderer when a tool
+ * needs approval (PERMISSION_REQUEST event payload).
+ */
+export interface PermissionRequest {
+  requestId: string
+  tool: string
+  description: string
+  affectedScope: string
+  riskLevel: PermissionRiskLevel
+  input: Record<string, unknown>
+}
+
+/**
+ * A single recorded permission decision (shown in the security center log).
+ */
+export interface PermissionLogEntry {
+  id: string
+  tool: string
+  inputSummary: string
+  mode: DesktopPermissionMode
+  decision: PermissionDecisionAction
+  scope: PermissionScope | 'auto'
+  riskLevel: PermissionRiskLevel
+  timestamp: string
 }
 
 export interface AutomationInfo {

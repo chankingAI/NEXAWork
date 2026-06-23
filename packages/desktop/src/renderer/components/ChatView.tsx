@@ -6,6 +6,8 @@ import type { ChatMessage, StreamEvent } from '../../shared/ipc-channels';
 
 interface ChatViewProps {
   sessionId: string;
+  /** Optional toolbar rendered in the input area (e.g. permission selector). */
+  inputToolbar?: React.ReactNode;
 }
 
 /**
@@ -16,7 +18,7 @@ interface ChatViewProps {
  * - "Completed" status indicator
  * - Reference links section
  */
-export function ChatView({ sessionId }: ChatViewProps) {
+export function ChatView({ sessionId, inputToolbar }: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -196,7 +198,7 @@ export function ChatView({ sessionId }: ChatViewProps) {
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} onStop={handleStop} isLoading={isLoading} />
+      <ChatInput onSend={handleSend} onStop={handleStop} isLoading={isLoading} toolbar={inputToolbar} />
     </div>
   );
 }

@@ -6,6 +6,10 @@ import type {
   AutomationCreateInput,
   AutomationInfo,
   ProjectCreateInput,
+  DesktopPermissionMode,
+  PermissionDecisionAction,
+  PermissionScope,
+  PermissionRequest,
 } from '../shared/ipc-channels'
 
 /**
@@ -201,6 +205,33 @@ const nexaworkAPI = {
     maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
     close: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
     isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  },
+
+  // === Permission (N17) ===
+  permission: {
+    getMode: () => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_GET_MODE),
+
+    setMode: (input: { mode: DesktopPermissionMode }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_SET_MODE, input),
+
+    respond: (input: {
+      requestId: string
+      decision: PermissionDecisionAction
+      scope: PermissionScope
+    }) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_RESPOND, input),
+
+    logList: (input?: { limit?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LOG_LIST, input ?? {}),
+
+    logClear: () => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LOG_CLEAR),
+
+    onRequest: (callback: (request: PermissionRequest) => void) => {
+      const handler = (_: unknown, data: PermissionRequest) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.PERMISSION_REQUEST, handler)
+      }
+    },
   },
 
   // === App Info ===
