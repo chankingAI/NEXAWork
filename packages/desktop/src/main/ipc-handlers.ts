@@ -1,4 +1,8 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, BrowserWindow, app, dialog } from 'electron'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   ChatMessage,
@@ -11,6 +15,7 @@ import type {
   PermissionDecisionAction,
   PermissionScope,
   AutomationCreateInput,
+  ProjectCreateInput,
 } from '../shared/ipc-channels'
 import {
   initializeEngine,
@@ -24,6 +29,27 @@ import {
 } from './backend/engine'
 import { permissionManager } from './backend/permission-manager'
 import { automationManager } from './backend/automation-manager'
+import { projectManager } from './backend/project-manager'
+
+/** Expand a leading `~` to the user's home directory. */
+function expandHome(p: string): string {
+  if (p === '~') return homedir()
+  if (p.startsWith('~/') || p.startsWith('~\\'))
+    return join(homedir(), p.slice(2))
+  return p
+}
+
+/** Initialize a git repo at `path`, creating the directory if needed. */
+function initGitRepo(path: string): boolean {
+  try {
+    const dir = expandHome(path)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
  * NexaWork IPC Handler Registry
@@ -203,6 +229,8 @@ export function registerIPCHandlers(): void {
       if (!win.isDestroyed()) win.webContents.send(channel, payload)
     }
   })
+  projectManager.reset()
+  projectManager.setGitInit(initGitRepo)
   activeModel = 'auto'
 
   // Reset settings to defaults
@@ -747,6 +775,66 @@ export function registerIPCHandlers(): void {
       return { run }
     },
   )
+
+  // === Project (N20) ===
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_LIST,
+    async (_event, input: { query?: string }) => {
+      return { projects: projectManager.list(input?.query) }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_CREATE,
+    async (_event, input: ProjectCreateInput) => {
+      if (!input?.name?.trim())
+        throw createError('INVALID_INPUT', 'Project name is required')
+      if (!input?.path?.trim())
+        throw createError('INVALID_INPUT', 'Project path is required')
+      const project = projectManager.create(input)
+      return { id: project.id }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_GET,
+    async (_event, input: { id: string }) => {
+      const project = projectManager.get(input.id)
+      if (!project)
+        throw createError('NOT_FOUND', `Project ${input.id} not found`)
+      return project
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_RENAME,
+    async (_event, input: { id: string; name: string }) => {
+      const ok = projectManager.rename(input.id, input.name)
+      if (!ok) throw createError('NOT_FOUND', `Project ${input.id} not found`)
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_DELETE,
+    async (_event, input: { id: string }) => {
+      projectManager.delete(input.id)
+      return { success: true }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.PROJECT_PICK_DIR, async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          properties: ['openDirectory', 'createDirectory'],
+        })
+      : await dialog.showOpenDialog({
+          properties: ['openDirectory', 'createDirectory'],
+        })
+    const path = result.canceled ? null : (result.filePaths[0] ?? null)
+    return { path }
+  })
 
   // === Settings ===
   // Settings store is defined at module level (shared with API key lookup)

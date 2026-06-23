@@ -24,6 +24,10 @@ mock.module('electron', () => ({
       webContents: { send: () => {} },
     }),
     getAllWindows: () => [],
+    getFocusedWindow: () => null,
+  },
+  dialog: {
+    showOpenDialog: () => Promise.resolve({ canceled: true, filePaths: [] }),
   },
   app: {
     getVersion: () => '0.1.0',

@@ -52,6 +52,14 @@ export const IPC_CHANNELS = {
   AUTOMATION_RUN_NOW: 'automation:runNow',
   AUTOMATION_RUN_EVENT: 'automation:runEvent',
 
+  // Project (N20)
+  PROJECT_LIST: 'project:list',
+  PROJECT_CREATE: 'project:create',
+  PROJECT_GET: 'project:get',
+  PROJECT_RENAME: 'project:rename',
+  PROJECT_DELETE: 'project:delete',
+  PROJECT_PICK_DIR: 'project:pickDir',
+
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -241,6 +249,32 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.AUTOMATION_RUN_NOW]: {
     input: { id: string }
     output: { run: AutomationRun }
+  }
+
+  // Project (N20)
+  [IPC_CHANNELS.PROJECT_LIST]: {
+    input: { query?: string }
+    output: { projects: ProjectInfo[] }
+  }
+  [IPC_CHANNELS.PROJECT_CREATE]: {
+    input: ProjectCreateInput
+    output: { id: string }
+  }
+  [IPC_CHANNELS.PROJECT_GET]: {
+    input: { id: string }
+    output: ProjectInfo
+  }
+  [IPC_CHANNELS.PROJECT_RENAME]: {
+    input: { id: string; name: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PROJECT_DELETE]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.PROJECT_PICK_DIR]: {
+    input: Record<string, never>
+    output: { path: string | null }
   }
 
   // Settings
@@ -465,6 +499,30 @@ export interface AutomationRun {
   completedAt?: string
   output?: string
   error?: string
+}
+
+// --- Project (N20) ---
+
+export interface ProjectInfo {
+  id: string
+  name: string
+  description: string
+  /** Source template id, or undefined for a blank project. */
+  template?: string
+  /** Associated local directory / git repository path. */
+  path: string
+  createdAt: string
+  /** True when a git repo was initialized at `path` on creation. */
+  gitInitialized?: boolean
+}
+
+export interface ProjectCreateInput {
+  name: string
+  description?: string
+  template?: string
+  path: string
+  /** Run `git init` at `path` during creation (wizard step 4). */
+  initGit?: boolean
 }
 
 // --- Stream Events ---

@@ -23,6 +23,10 @@ mock.module('electron', () => ({
       webContents: { send: () => {} },
     }),
     getAllWindows: () => [],
+    getFocusedWindow: () => null,
+  },
+  dialog: {
+    showOpenDialog: () => Promise.resolve({ canceled: true, filePaths: [] }),
   },
   app: {
     getVersion: () => '0.1.0',
@@ -110,15 +114,23 @@ describe('IPC Handler Registration', () => {
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
+
+    // Project (6)
+    expect(registeredChannels).toContain('project:list')
+    expect(registeredChannels).toContain('project:create')
+    expect(registeredChannels).toContain('project:get')
+    expect(registeredChannels).toContain('project:rename')
+    expect(registeredChannels).toContain('project:delete')
+    expect(registeredChannels).toContain('project:pickDir')
   })
 
-  test('total handler count: 46 channels registered', async () => {
+  test('total handler count: 52 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 7 automation + 3 settings + 5 permission + 4 window + 2 app = 46
-    expect(mockHandlers.size).toBe(46)
+    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 7 automation + 3 settings + 5 permission + 4 window + 2 app + 6 project = 52
+    expect(mockHandlers.size).toBe(52)
   })
 })
 

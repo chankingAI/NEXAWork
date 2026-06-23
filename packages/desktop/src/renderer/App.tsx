@@ -9,9 +9,11 @@ import { PermissionSelector } from './components/PermissionSelector';
 import { PermissionConfirmDialog } from './components/PermissionConfirmDialog';
 import { PermissionLogView } from './components/PermissionLogView';
 import { AutomationPanel } from './components/AutomationPanel';
+import { ProjectPage } from './components/ProjectPage';
 import { defaultSkills, type MarketSkill } from './components/SkillSearchPanel';
 import { usePermission } from './hooks/usePermission';
 import { useAutomations } from './hooks/useAutomations';
+import { useProjects } from './hooks/useProjects';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -22,6 +24,7 @@ export function App() {
   const scene = useScene('office');
   const permission = usePermission();
   const automations = useAutomations();
+  const projects = useProjects();
 
   const handleNewSession = useCallback(() => {
     const id = `session-${Date.now()}`;
@@ -155,6 +158,14 @@ export function App() {
                 onToggle={automations.toggle}
                 onDelete={automations.remove}
                 onRunNow={automations.runNow}
+              />
+            ) : activeNav === 'projects' ? (
+              <ProjectPage
+                projects={projects.projects}
+                onCreate={projects.create}
+                onRename={projects.rename}
+                onDelete={projects.remove}
+                onPickDir={projects.pickDir}
               />
             ) : activeSessionId ? (
               <ChatView
