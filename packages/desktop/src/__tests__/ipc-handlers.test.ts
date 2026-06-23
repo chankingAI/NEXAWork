@@ -80,12 +80,23 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('skill:execute')
     expect(registeredChannels).toContain('skill:delete')
 
-    // Automation (5)
+    // Automation (8)
     expect(registeredChannels).toContain('automation:list')
     expect(registeredChannels).toContain('automation:create')
     expect(registeredChannels).toContain('automation:update')
     expect(registeredChannels).toContain('automation:delete')
     expect(registeredChannels).toContain('automation:history')
+    expect(registeredChannels).toContain('automation:pause')
+    expect(registeredChannels).toContain('automation:resume')
+    expect(registeredChannels).toContain('automation:runNow')
+
+    // Project (6)
+    expect(registeredChannels).toContain('project:list')
+    expect(registeredChannels).toContain('project:get')
+    expect(registeredChannels).toContain('project:create')
+    expect(registeredChannels).toContain('project:update')
+    expect(registeredChannels).toContain('project:delete')
+    expect(registeredChannels).toContain('project:templates')
 
     // Settings (3)
     expect(registeredChannels).toContain('settings:get')
@@ -103,13 +114,13 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 39 channels registered', async () => {
+  test('total handler count: 48 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 5 automation + 3 settings + 4 window + 2 app = 39
-    expect(mockHandlers.size).toBe(39)
+    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 8 automation + 6 project + 3 settings + 4 window + 2 app = 48
+    expect(mockHandlers.size).toBe(48)
   })
 })
 
@@ -435,6 +446,161 @@ describe('Handler Logic: Automation', () => {
     const result = await handler({}, { id: created.id })
     expect(result.runs).toHaveLength(0)
   })
+
+  test('automation:create rejects missing name/prompt/cron', async () => {
+    const handler = mockHandlers.get('automation:create')!
+    expect(
+      handler({}, { name: '', prompt: 'p', cron: 'P|day|08:00' }),
+    ).rejects.toThrow()
+    expect(
+      handler({}, { name: 'n', prompt: '', cron: 'P|day|08:00' }),
+    ).rejects.toThrow()
+    expect(handler({}, { name: 'n', prompt: 'p', cron: '' })).rejects.toThrow()
+  })
+
+  test('automation:pause then resume toggles status', async () => {
+    const create = mockHandlers.get('automation:create')!
+    const list = mockHandlers.get('automation:list')!
+    const created = await create(
+      {},
+      { name: 'Pausable', prompt: 'p', cron: 'P|day|08:00', workspace: '/' },
+    )
+
+    const pause = mockHandlers.get('automation:pause')!
+    expect((await pause({}, { id: created.id })).success).toBe(true)
+    let found = (await list({}, {})).automations.find(
+      (a: { id: string }) => a.id === created.id,
+    )
+    expect(found.status).toBe('paused')
+
+    const resume = mockHandlers.get('automation:resume')!
+    expect((await resume({}, { id: created.id })).success).toBe(true)
+    found = (await list({}, {})).automations.find(
+      (a: { id: string }) => a.id === created.id,
+    )
+    expect(found.status).toBe('active')
+  })
+
+  test('automation:pause/resume/runNow throw for unknown id', async () => {
+    expect(
+      mockHandlers.get('automation:pause')!({}, { id: 'nope' }),
+    ).rejects.toThrow()
+    expect(
+      mockHandlers.get('automation:resume')!({}, { id: 'nope' }),
+    ).rejects.toThrow()
+    expect(
+      mockHandlers.get('automation:runNow')!({}, { id: 'nope' }),
+    ).rejects.toThrow()
+  })
+
+  test('automation:runNow executes and records a run in history', async () => {
+    const create = mockHandlers.get('automation:create')!
+    const created = await create(
+      {},
+      { name: 'RunNow', prompt: 'hi', cron: 'P|day|08:00', workspace: '/' },
+    )
+
+    const runNow = mockHandlers.get('automation:runNow')!
+    const result = await runNow({}, { id: created.id })
+    expect(result.run).toBeDefined()
+    expect(['success', 'failure']).toContain(result.run.status)
+
+    const history = mockHandlers.get('automation:history')!
+    expect((await history({}, { id: created.id })).runs.length).toBeGreaterThan(
+      0,
+    )
+  })
+
+  test('automation:create with periodic cron computes a nextRun', async () => {
+    const create = mockHandlers.get('automation:create')!
+    const list = mockHandlers.get('automation:list')!
+    const created = await create(
+      {},
+      { name: 'Next', prompt: 'p', cron: 'P|day|08:00', workspace: '/' },
+    )
+    const found = (await list({}, {})).automations.find(
+      (a: { id: string }) => a.id === created.id,
+    )
+    expect(found.nextRun).toBeDefined()
+  })
+})
+
+describe('Handler Logic: Project', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  test('project:templates returns 6 templates', async () => {
+    const handler = mockHandlers.get('project:templates')!
+    const result = await handler({})
+    expect(result.templates).toHaveLength(6)
+  })
+
+  test('project:create returns id + project with defaults from template', async () => {
+    const handler = mockHandlers.get('project:create')!
+    const result = await handler({}, { name: 'My PRD', template: 'prd-flow' })
+    expect(result.id).toContain('proj-')
+    expect(result.project.name).toBe('My PRD')
+    expect(result.project.template).toBe('prd-flow')
+    expect(result.project.icon).toBeTruthy()
+  })
+
+  test('project:create rejects missing name', async () => {
+    const handler = mockHandlers.get('project:create')!
+    expect(handler({}, { name: '' })).rejects.toThrow()
+  })
+
+  test('project:list returns created projects and supports search', async () => {
+    const create = mockHandlers.get('project:create')!
+    await create({}, { name: 'Alpha Marketing' })
+    await create({}, { name: 'Beta Engineering' })
+
+    const list = mockHandlers.get('project:list')!
+    expect((await list({}, {})).projects.length).toBeGreaterThanOrEqual(2)
+    const filtered = await list({}, { query: 'alpha' })
+    expect(filtered.projects).toHaveLength(1)
+    expect(filtered.projects[0].name).toBe('Alpha Marketing')
+  })
+
+  test('project:get returns specific project, throws for unknown', async () => {
+    const create = mockHandlers.get('project:create')!
+    const created = await create({}, { name: 'Gettable' })
+
+    const get = mockHandlers.get('project:get')!
+    expect((await get({}, { id: created.id })).name).toBe('Gettable')
+    expect(get({}, { id: 'nope' })).rejects.toThrow()
+  })
+
+  test('project:update modifies name/description', async () => {
+    const create = mockHandlers.get('project:create')!
+    const created = await create({}, { name: 'Old', description: 'old' })
+
+    const update = mockHandlers.get('project:update')!
+    expect(
+      (await update({}, { id: created.id, name: 'New', description: 'new' }))
+        .success,
+    ).toBe(true)
+
+    const get = mockHandlers.get('project:get')!
+    const after = await get({}, { id: created.id })
+    expect(after.name).toBe('New')
+    expect(after.description).toBe('new')
+  })
+
+  test('project:delete removes project', async () => {
+    const create = mockHandlers.get('project:create')!
+    const created = await create({}, { name: 'ToDelete' })
+
+    const del = mockHandlers.get('project:delete')!
+    expect((await del({}, { id: created.id })).success).toBe(true)
+
+    const list = mockHandlers.get('project:list')!
+    const ids = (await list({}, {})).projects.map((p: { id: string }) => p.id)
+    expect(ids).not.toContain(created.id)
+  })
 })
 
 describe('Handler Logic: Settings', () => {
@@ -469,6 +635,44 @@ describe('Handler Logic: Settings', () => {
     const resetHandler = mockHandlers.get('settings:reset')!
     const result = await resetHandler({}, { key: 'customKey' })
     expect(result.success).toBe(true)
+  })
+
+  test('settings:reset (no key) restores all defaults', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'fontSize', value: 20 })
+    await setHandler({}, { key: 'readingMode', value: true })
+
+    const resetHandler = mockHandlers.get('settings:reset')!
+    await resetHandler({}, {})
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const result = await getHandler({}, {})
+    expect(result.fontSize).toBe(14)
+    expect(result.readingMode).toBe(false)
+    expect(result.language).toBe('zh-CN')
+  })
+
+  test('settings:reset (single key) restores that field default', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'language', value: 'ja' })
+
+    const resetHandler = mockHandlers.get('settings:reset')!
+    await resetHandler({}, { key: 'language' })
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const result = await getHandler({}, { key: 'language' })
+    expect(result.language).toBe('zh-CN')
+  })
+
+  test('settings:set persists boolean + numeric N21 fields', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'skillAutoInstall', value: true })
+    await setHandler({}, { key: 'sendKey', value: 'Ctrl+Enter' })
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const all = await getHandler({}, {})
+    expect(all.skillAutoInstall).toBe(true)
+    expect(all.sendKey).toBe('Ctrl+Enter')
   })
 })
 

@@ -4,6 +4,8 @@ import type {
   StreamEvent,
   ModelConfig,
   AutomationCreateInput,
+  AutomationInfo,
+  ProjectCreateInput,
 } from '../shared/ipc-channels'
 
 /**
@@ -125,7 +127,7 @@ const nexaworkAPI = {
     create: (input: AutomationCreateInput) =>
       ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_CREATE, input),
 
-    update: (input: { id: string; updates: Partial<AutomationCreateInput> }) =>
+    update: (input: { id: string; updates: Partial<AutomationInfo> }) =>
       ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_UPDATE, input),
 
     delete: (input: { id: string }) =>
@@ -133,6 +135,43 @@ const nexaworkAPI = {
 
     history: (input: { id: string; limit?: number }) =>
       ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_HISTORY, input),
+
+    pause: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_PAUSE, input),
+
+    resume: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_RESUME, input),
+
+    runNow: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AUTOMATION_RUN_NOW, input),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.AUTOMATION_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.AUTOMATION_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Project ===
+  project: {
+    list: (input?: { query?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_LIST, input ?? {}),
+
+    get: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET, input),
+
+    create: (input: ProjectCreateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_CREATE, input),
+
+    update: (input: { id: string; name?: string; description?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_UPDATE, input),
+
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DELETE, input),
+
+    templates: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_TEMPLATES),
   },
 
   // === Settings ===
@@ -145,6 +184,15 @@ const nexaworkAPI = {
 
     reset: (key?: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET, { key }),
+
+    onChanged: (callback: (settings: Record<string, unknown>) => void) => {
+      const handler = (_: unknown, data: Record<string, unknown>) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, handler)
+      }
+    },
   },
 
   // === Window Controls ===

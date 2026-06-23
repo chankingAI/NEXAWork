@@ -313,7 +313,8 @@ describe('Integration: Settings System', () => {
 
     await mockHandlers.get('settings:reset')!({}, { key: 'theme' })
     const afterReset = await mockHandlers.get('settings:get')!({}, {})
-    expect(afterReset.theme).toBeUndefined()
+    // Resetting a known field restores its spec default (not delete it).
+    expect(afterReset.theme).toBe('light')
     expect(afterReset.fontSize).toBe(16)
   })
 
