@@ -38,5 +38,9 @@
     "packages/**/*.ts",
     "packages/**/*.tsx"
   ],
-  "exclude": ["node_modules", "packages/remote-control-server/web"]
+  "exclude": [
+    "node_modules",
+    "packages/remote-control-server/web",
+    "packages/desktop"
+  ]
 }

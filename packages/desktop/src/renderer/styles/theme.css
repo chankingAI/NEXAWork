@@ -185,12 +185,15 @@
    ============================================= */
 :root {
   /* Font families */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
-    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", Menlo, Consolas,
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI",
+    Roboto, "Helvetica Neue", sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SF Mono", "Fira Code", Menlo, Consolas,
     "Liberation Mono", monospace;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter",
-    "Segoe UI", Roboto, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI",
+    Roboto, sans-serif;
 
   /* Font sizes (modular scale) */
   --text-2xs: 10px;
@@ -273,61 +276,58 @@
 :root {
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.03);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07),
-    0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08),
-    0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08),
-    0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
   --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
   --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.05);
   --shadow-none: none;
 
   /* Elevation-specific (Apple-style layering) */
-  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.12),
-    0 0 1px rgba(0, 0, 0, 0.08);
-  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.12),
-    0 0 1px rgba(0, 0, 0, 0.08);
-  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.16),
-    0 0 1px rgba(0, 0, 0, 0.08);
-  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1),
-    0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-dropdown:
+    0 8px 24px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.16), 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 /* Dark theme shadows (more subtle) */
 :root[data-theme="dark"] {
   --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.1);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
-    0 2px 4px -2px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
-    0 4px 6px -4px rgba(0, 0, 0, 0.2);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
-    0 8px 10px -6px rgba(0, 0, 0, 0.2);
-  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4),
-    0 0 1px rgba(255, 255, 255, 0.05);
-  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.4),
-    0 0 1px rgba(255, 255, 255, 0.05);
-  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5),
-    0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  --shadow-popover:
+    0 4px 16px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-dropdown:
+    0 8px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-modal:
+    0 16px 48px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.1);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
-      0 2px 4px -2px rgba(0, 0, 0, 0.2);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3),
-      0 4px 6px -4px rgba(0, 0, 0, 0.2);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
-      0 8px 10px -6px rgba(0, 0, 0, 0.2);
-    --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4),
-      0 0 1px rgba(255, 255, 255, 0.05);
-    --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.4),
-      0 0 1px rgba(255, 255, 255, 0.05);
-    --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5),
-      0 0 1px rgba(255, 255, 255, 0.05);
+    --shadow-md:
+      0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+    --shadow-lg:
+      0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+    --shadow-xl:
+      0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+    --shadow-popover:
+      0 4px 16px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05);
+    --shadow-dropdown:
+      0 8px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05);
+    --shadow-modal:
+      0 16px 48px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.05);
   }
 }
 
@@ -355,7 +355,8 @@
   --transition-fast: all var(--duration-fast) var(--ease-default);
   --transition-normal: all var(--duration-normal) var(--ease-default);
   --transition-slow: all var(--duration-slow) var(--ease-default);
-  --transition-colors: color var(--duration-fast) var(--ease-default),
+  --transition-colors:
+    color var(--duration-fast) var(--ease-default),
     background-color var(--duration-fast) var(--ease-default),
     border-color var(--duration-fast) var(--ease-default);
   --transition-transform: transform var(--duration-normal) var(--ease-out);
@@ -425,48 +426,92 @@
    10. KEYFRAME ANIMATIONS
    ============================================= */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes slideUp {
-  from { transform: translateY(8px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-8px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes scaleIn {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes streamingCursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Animation utility classes */
@@ -503,7 +548,8 @@ html.theme-transitioning,
 html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
-  transition: background-color var(--duration-slow) var(--ease-default),
+  transition:
+    background-color var(--duration-slow) var(--ease-default),
     color var(--duration-slow) var(--ease-default),
     border-color var(--duration-slow) var(--ease-default),
     box-shadow var(--duration-slow) var(--ease-default) !important;

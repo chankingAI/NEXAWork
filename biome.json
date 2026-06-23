@@ -49,6 +49,7 @@
         "useImportType": "off"
       },
       "complexity": {
+        "noImportantStyles": "off",
         "noForEach": "off",
         "noBannedTypes": "off",
         "noUselessConstructor": "off",
