@@ -88,6 +88,15 @@ export const IPC_CHANNELS = {
   DATA_RESTORE: 'data:restore',
   DATA_CHANGED: 'data:changed', // push: main → renderer
 
+  // Recording (N24)
+  RECORD_START: 'record:start',
+  RECORD_STOP: 'record:stop',
+  RECORD_PAUSE: 'record:pause',
+  RECORD_RESUME: 'record:resume',
+  RECORD_STATUS: 'record:status',
+  RECORD_DISCARD: 'record:discard',
+  RECORD_CHANGED: 'record:changed', // push: main → renderer
+
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
@@ -408,6 +417,36 @@ export interface IPCRequestMap {
     output: Record<string, never>
   }
 
+  // Recording (N24)
+  [IPC_CHANNELS.RECORD_START]: {
+    input: { taskDescription?: string }
+    output: RecorderStatus
+  }
+  [IPC_CHANNELS.RECORD_STOP]: {
+    input: Record<string, never>
+    output: RecordStopResult
+  }
+  [IPC_CHANNELS.RECORD_PAUSE]: {
+    input: Record<string, never>
+    output: RecorderStatus
+  }
+  [IPC_CHANNELS.RECORD_RESUME]: {
+    input: Record<string, never>
+    output: RecorderStatus
+  }
+  [IPC_CHANNELS.RECORD_STATUS]: {
+    input: Record<string, never>
+    output: RecorderStatus
+  }
+  [IPC_CHANNELS.RECORD_DISCARD]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.RECORD_CHANGED]: {
+    input: Record<string, never>
+    output: RecorderStatus
+  }
+
   // Window
   [IPC_CHANNELS.WINDOW_MINIMIZE]: {
     input: Record<string, never>
@@ -682,6 +721,30 @@ export interface ImportStats {
   importedSkills: number
   skippedSessions: number
   skippedSkills: number
+}
+
+// --- Recording (N24) ---
+
+/** Lifecycle state of the recorder, surfaced to the record button + status bar. */
+export type RecordingState = 'idle' | 'recording' | 'paused'
+
+/** Live recorder snapshot pushed each tick and returned by control calls. */
+export interface RecorderStatus {
+  sessionId: string | null
+  state: RecordingState
+  /** Number of captured action events so far. */
+  eventCount: number
+  /** Active recording time in ms (paused spans excluded). */
+  elapsedMs: number
+}
+
+/** Outcome returned when a recording stops; drives the completion dialog. */
+export interface RecordStopResult {
+  id: string
+  durationMs: number
+  eventCount: number
+  /** Path the recording JSON was written to, or null when not persisted. */
+  outputPath: string | null
 }
 
 // --- Stream Events ---

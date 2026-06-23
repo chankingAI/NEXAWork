@@ -190,6 +190,25 @@ const zhCN = {
   'data.restore.confirm': '恢复将覆盖当前全部数据，确定继续吗？',
   'data.restore.success': '恢复完成。',
   'data.confirm.continue': '确定',
+
+  // Recording (N24)
+  'record.button.record': '录制',
+  'record.button.recording': '录制中',
+  'record.button.paused': '已暂停',
+  'record.button.stop': '停止',
+  'record.button.tooltip.start': '开始录制操作',
+  'record.button.tooltip.stop': '停止录制',
+  'record.statusbar.rec': 'REC',
+  'record.statusbar.events': '{count} 个事件',
+  'record.statusbar.pause': '暂停',
+  'record.statusbar.resume': '继续',
+  'record.statusbar.stop': '停止',
+  'record.completion.title': '录制完成！',
+  'record.completion.desc':
+    '已捕获 {count} 个事件，时长 {duration}。是否生成技能？',
+  'record.completion.generateSkill': '生成技能',
+  'record.completion.saveRecording': '保存录制',
+  'record.completion.discard': '丢弃',
 } as const
 
 export type MessageKey = keyof typeof zhCN
@@ -372,6 +391,24 @@ const en: Messages = {
   'data.restore.confirm': 'Restore will overwrite all current data. Continue?',
   'data.restore.success': 'Restore complete.',
   'data.confirm.continue': 'Confirm',
+
+  'record.button.record': 'Record',
+  'record.button.recording': 'Recording',
+  'record.button.paused': 'Paused',
+  'record.button.stop': 'Stop',
+  'record.button.tooltip.start': 'Start recording actions',
+  'record.button.tooltip.stop': 'Stop recording',
+  'record.statusbar.rec': 'REC',
+  'record.statusbar.events': '{count} events',
+  'record.statusbar.pause': 'Pause',
+  'record.statusbar.resume': 'Resume',
+  'record.statusbar.stop': 'Stop',
+  'record.completion.title': 'Recording complete!',
+  'record.completion.desc':
+    'Captured {count} events over {duration}. Generate a skill?',
+  'record.completion.generateSkill': 'Generate skill',
+  'record.completion.saveRecording': 'Save recording',
+  'record.completion.discard': 'Discard',
 }
 
 const ja: Messages = {
@@ -558,6 +595,24 @@ const ja: Messages = {
     '復元すると現在の全データが上書きされます。続行しますか？',
   'data.restore.success': '復元が完了しました。',
   'data.confirm.continue': '確定',
+
+  'record.button.record': '録画',
+  'record.button.recording': '録画中',
+  'record.button.paused': '一時停止',
+  'record.button.stop': '停止',
+  'record.button.tooltip.start': '操作の録画を開始',
+  'record.button.tooltip.stop': '録画を停止',
+  'record.statusbar.rec': 'REC',
+  'record.statusbar.events': '{count} 件のイベント',
+  'record.statusbar.pause': '一時停止',
+  'record.statusbar.resume': '再開',
+  'record.statusbar.stop': '停止',
+  'record.completion.title': '録画が完了しました！',
+  'record.completion.desc':
+    '{duration} で {count} 件のイベントを記録しました。スキルを生成しますか？',
+  'record.completion.generateSkill': 'スキルを生成',
+  'record.completion.saveRecording': '録画を保存',
+  'record.completion.discard': '破棄',
 }
 
 const DICTIONARIES: Record<LanguageCode, Messages> = {

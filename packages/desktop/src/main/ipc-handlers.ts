@@ -36,6 +36,10 @@ import { Scheduler, type AutomationExecutor } from './backend/scheduler'
 import { initSettingsStore, type SettingsStore } from './backend/settings-store'
 import { initMemoryStore, type MemoryStore } from './backend/memory-store'
 import { initSecureStore, type SecureStore } from './backend/secure-store'
+import {
+  initRecorderManager,
+  type RecorderManager,
+} from './backend/recorder-manager'
 import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 import {
@@ -69,6 +73,9 @@ let scheduler: Scheduler
 // Operation-memory + encrypted API-key stores (N22).
 let memoryStore: MemoryStore
 let secureStore: SecureStore
+// Operation recorder + its 1s status-push timer (N24).
+let recorder: RecorderManager
+let recordTicker: ReturnType<typeof setInterval> | null = null
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -130,6 +137,36 @@ function broadcastDataChanged(): void {
   }
 }
 
+/** Push the live recorder status to every renderer window (N24). */
+function broadcastRecordingChanged(): void {
+  const status = recorder.getStatus()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.RECORD_CHANGED, status)
+    }
+  }
+}
+
+/** Start the 1s ticker that pushes recorder status while a recording is live. */
+function startRecordTicker(): void {
+  if (recordTicker) return
+  recordTicker = setInterval(() => {
+    if (recorder.isActive()) {
+      broadcastRecordingChanged()
+    } else {
+      stopRecordTicker()
+    }
+  }, 1000)
+}
+
+/** Stop the recorder status ticker. */
+function stopRecordTicker(): void {
+  if (recordTicker) {
+    clearInterval(recordTicker)
+    recordTicker = null
+  }
+}
+
 /** Assemble a live snapshot of every persisted collection (N23). */
 function buildSnapshot(): DataSnapshot {
   const messagesBySession: Record<string, ChatMessage[]> = {}
@@ -172,6 +209,11 @@ function resolveUserDataPath(fileName: string): string | null {
   } catch {
     return null
   }
+}
+
+/** Resolve the directory recordings are written to, or null in tests (N24). */
+function resolveRecordingsDir(): string | null {
+  return resolveUserDataPath('recordings')
 }
 
 /**
@@ -418,6 +460,10 @@ export function registerIPCHandlers(): void {
   // entries past the configured retention window on startup.
   memoryStore = initMemoryStore(resolveUserDataPath('memory.json'))
   secureStore = initSecureStore(resolveUserDataPath('secure-keys.json'))
+
+  // Initialize the N24 operation recorder; recordings persist under userData.
+  stopRecordTicker()
+  recorder = initRecorderManager({ dir: resolveRecordingsDir() })
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -960,6 +1006,46 @@ export function registerIPCHandlers(): void {
       broadcastMemoryChanged()
       broadcastAutomationChanged()
       return { success: true, stats: computeStats(buildSnapshot()) }
+    },
+  )
+
+  // === Recording (N24) ===
+  ipcMain.handle(
+    IPC_CHANNELS.RECORD_START,
+    async (_event, input: { taskDescription?: string } = {}) => {
+      const status = recorder.start({ taskDescription: input?.taskDescription })
+      startRecordTicker()
+      broadcastRecordingChanged()
+      return status
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_PAUSE, async () => {
+    const status = recorder.pause()
+    broadcastRecordingChanged()
+    return status
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_RESUME, async () => {
+    const status = recorder.resume()
+    broadcastRecordingChanged()
+    return status
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_STOP, async () => {
+    const result = recorder.stop()
+    stopRecordTicker()
+    broadcastRecordingChanged()
+    return result
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_STATUS, async () => recorder.getStatus())
+
+  ipcMain.handle(
+    IPC_CHANNELS.RECORD_DISCARD,
+    async (_event, input: { id: string }) => {
+      if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
+      return { success: recorder.discard(input.id) }
     },
   )
 

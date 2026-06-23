@@ -469,6 +469,11 @@
   50% { opacity: 0; }
 }
 
+@keyframes recordPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.82); }
+}
+
 /* Animation utility classes */
 .animate-fade-in {
   animation: fadeIn var(--duration-normal) var(--ease-out);
@@ -494,6 +499,9 @@
 }
 .animate-streaming-cursor {
   animation: streamingCursor 1s infinite;
+}
+.animate-record-pulse {
+  animation: recordPulse 0.5s ease-in-out infinite;
 }
 
 /* =============================================

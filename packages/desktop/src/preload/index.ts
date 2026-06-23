@@ -13,6 +13,7 @@ import type {
   ExportScope,
   ExportFormat,
   ConflictStrategy,
+  RecorderStatus,
 } from '../shared/ipc-channels'
 
 /**
@@ -262,6 +263,31 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.DATA_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.DATA_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Recording (N24) ===
+  record: {
+    start: (input?: { taskDescription?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RECORD_START, input ?? {}),
+
+    pause: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_PAUSE, {}),
+
+    resume: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_RESUME, {}),
+
+    stop: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_STOP, {}),
+
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_STATUS, {}),
+
+    discard: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RECORD_DISCARD, input),
+
+    onChanged: (callback: (status: RecorderStatus) => void) => {
+      const handler = (_: unknown, data: RecorderStatus) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.RECORD_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.RECORD_CHANGED, handler)
       }
     },
   },
