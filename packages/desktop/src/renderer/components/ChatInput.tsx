@@ -7,6 +7,10 @@ export interface ChatInputProps {
   isLoading?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  /** Toolbar rendered above the input box (mode / model / expert selectors). */
+  toolbar?: React.ReactNode;
+  /** Prefill value (e.g. from a welcome quick-action). */
+  initialValue?: string;
 }
 
 /**
@@ -23,8 +27,10 @@ export function ChatInput({
   isLoading = false,
   placeholder = '今天帮你做些什么？',
   disabled = false,
+  toolbar,
+  initialValue = '',
 }: ChatInputProps) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialValue);
   const [showMention, setShowMention] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -99,6 +105,9 @@ export function ChatInput({
             }}
           />
         )}
+
+        {/* Toolbar: mode / model / expert selectors */}
+        {toolbar && <div className="mb-2">{toolbar}</div>}
 
         {/* Input container */}
         <div className="flex items-end gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 shadow-sm transition-shadow duration-[var(--duration-fast)] focus-within:border-[var(--color-border-focus)] focus-within:shadow-md">

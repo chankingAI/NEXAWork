@@ -2,6 +2,11 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
+import { ModeSelector } from './ModeSelector';
+import { ModelSelector } from './ModelSelector';
+import { ExpertSelector } from './ExpertSelector';
+import { defaultExperts } from './ExpertListPage';
+import { useAppStore } from '../store/appStore';
 import type { ChatMessage, StreamEvent } from '../../shared/ipc-channels';
 
 interface ChatViewProps {
@@ -17,6 +22,30 @@ interface ChatViewProps {
  * - Reference links section
  */
 export function ChatView({ sessionId }: ChatViewProps) {
+  // Chat configuration from the centralized store (N8 / N9 / N14)
+  const chatMode = useAppStore(s => s.chatMode);
+  const modelId = useAppStore(s => s.modelId);
+  const maxMode = useAppStore(s => s.maxMode);
+  const currentExpertId = useAppStore(s => s.currentExpertId);
+  const recentExpertIds = useAppStore(s => s.recentExpertIds);
+  const toolbarConfig = useAppStore(s => s.toolbarConfig);
+  const pendingInput = useAppStore(s => s.pendingInput);
+  const setChatMode = useAppStore(s => s.setChatMode);
+  const setModelId = useAppStore(s => s.setModelId);
+  const setMaxMode = useAppStore(s => s.setMaxMode);
+  const selectExpert = useAppStore(s => s.selectExpert);
+  const updateToolbar = useAppStore(s => s.updateToolbar);
+  const openExpertList = useAppStore(s => s.openExpertList);
+  const consumePendingInput = useAppStore(s => s.consumePendingInput);
+
+  const [initialInput] = useState(pendingInput ?? '');
+
+  // Clear the one-shot prefill once it has been handed to the input
+  useEffect(() => {
+    if (pendingInput) consumePendingInput();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -100,7 +129,7 @@ export function ChatView({ sessionId }: ChatViewProps) {
           streamCleanupRef.current = unsubscribe;
 
           // Trigger stream
-          await window.nexawork.chat.stream({ sessionId, message });
+          await window.nexawork.chat.stream({ sessionId, message, model: modelId });
         } else {
           // Dev mode fallback: simulate streaming
           await simulateStream(message, token => {
@@ -129,7 +158,7 @@ export function ChatView({ sessionId }: ChatViewProps) {
         setStreamingContent('');
       }
     },
-    [sessionId],
+    [sessionId, modelId],
   );
 
   const handleStop = useCallback(() => {
@@ -196,7 +225,38 @@ export function ChatView({ sessionId }: ChatViewProps) {
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} onStop={handleStop} isLoading={isLoading} />
+      <ChatInput
+        onSend={handleSend}
+        onStop={handleStop}
+        isLoading={isLoading}
+        initialValue={initialInput}
+        toolbar={
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <ModeSelector
+                activeMode={chatMode}
+                onModeChange={setChatMode}
+                onSummonExpert={selectExpert}
+                experts={defaultExperts.map(e => ({ id: e.id, name: e.name, specialty: e.role }))}
+              />
+              <ModelSelector
+                activeModelId={modelId}
+                maxMode={maxMode}
+                onModelChange={setModelId}
+                onMaxModeChange={setMaxMode}
+              />
+            </div>
+            <ExpertSelector
+              currentExpertId={currentExpertId}
+              recentExpertIds={recentExpertIds}
+              onSelectExpert={selectExpert}
+              onOpenExpertList={openExpertList}
+              toolbarConfig={toolbarConfig}
+              onToolbarChange={updateToolbar}
+            />
+          </div>
+        }
+      />
     </div>
   );
 }

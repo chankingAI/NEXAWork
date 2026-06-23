@@ -24,6 +24,8 @@ import {
   Lightbulb,
   Settings,
 } from 'lucide-react';
+import { SessionList } from './SessionList';
+import type { Session } from '../../shared/session-types';
 
 // ─── Types ────────────────────────────────────────────────────
 export type NavigationId =
@@ -63,6 +65,14 @@ export interface SidebarProps {
   userName?: string;
   userAvatar?: string;
   notificationCount?: number;
+  // Session management (N10) — when provided, renders the full SessionList
+  sessions?: Session[];
+  sessionSearchQuery?: string;
+  onSessionSearchChange?: (query: string) => void;
+  onDeleteSession?: (id: string) => void;
+  onRenameSession?: (id: string, title: string) => void;
+  onPinSession?: (id: string) => void;
+  onArchiveSession?: (id: string) => void;
 }
 
 // ─── Navigation Items ─────────────────────────────────────────
@@ -156,6 +166,13 @@ export function Sidebar({
   spaces = defaultSpaces,
   userName = 'User',
   notificationCount = 0,
+  sessions,
+  sessionSearchQuery = '',
+  onSessionSearchChange,
+  onDeleteSession,
+  onRenameSession,
+  onPinSession,
+  onArchiveSession,
 }: SidebarProps) {
   const [moreExpanded, setMoreExpanded] = useState(false);
   const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(new Set(['space-1']));
@@ -313,24 +330,42 @@ export function Sidebar({
       {/* ═══ Divider ═══ */}
       <div className="mx-3 my-2 border-t border-[var(--color-border)]" />
 
-      {/* ═══ Recent Tasks ═══ */}
-      {!collapsed && (
-        <div className="flex flex-col gap-0.5 px-2">
-          <span className="px-2 py-1 text-xs font-medium text-[var(--color-text-tertiary)]">最近任务</span>
-          {recentTasks.slice(0, 5).map(task => (
-            <button
-              key={task.id}
-              onClick={() => onSelectSession(task.id)}
-              className={`flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-[var(--color-bg-hover)] ${
-                activeSessionId === task.id ? 'bg-[var(--color-bg-hover)]' : ''
-              }`}
-            >
-              <StatusDot status={task.status} />
-              <span className="flex-1 truncate text-xs text-[var(--color-text-primary)]">{task.title}</span>
-              <span className="flex-shrink-0 text-[10px] text-[var(--color-text-quaternary)]">{task.time}</span>
-            </button>
-          ))}
+      {/* ═══ Recent Tasks / Sessions ═══ */}
+      {!collapsed && sessions ? (
+        <div className="flex flex-col gap-1">
+          <span className="px-4 py-1 text-xs font-medium text-[var(--color-text-tertiary)]">最近会话</span>
+          <SessionList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            searchQuery={sessionSearchQuery}
+            onSelect={onSelectSession}
+            onNew={onNewSession}
+            onDelete={onDeleteSession ?? (() => {})}
+            onRename={onRenameSession ?? (() => {})}
+            onPin={onPinSession ?? (() => {})}
+            onArchive={onArchiveSession ?? (() => {})}
+            onSearchChange={onSessionSearchChange ?? (() => {})}
+          />
         </div>
+      ) : (
+        !collapsed && (
+          <div className="flex flex-col gap-0.5 px-2">
+            <span className="px-2 py-1 text-xs font-medium text-[var(--color-text-tertiary)]">最近任务</span>
+            {recentTasks.slice(0, 5).map(task => (
+              <button
+                key={task.id}
+                onClick={() => onSelectSession(task.id)}
+                className={`flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-[var(--color-bg-hover)] ${
+                  activeSessionId === task.id ? 'bg-[var(--color-bg-hover)]' : ''
+                }`}
+              >
+                <StatusDot status={task.status} />
+                <span className="flex-1 truncate text-xs text-[var(--color-text-primary)]">{task.title}</span>
+                <span className="flex-shrink-0 text-[10px] text-[var(--color-text-quaternary)]">{task.time}</span>
+              </button>
+            ))}
+          </div>
+        )
       )}
 
       {/* ═══ Divider ═══ */}
