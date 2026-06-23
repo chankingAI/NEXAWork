@@ -94,6 +94,15 @@ describe('IPC_CHANNELS', () => {
     expect(IPC_CHANNELS.APP_PLATFORM).toBe('app:platform')
   })
 
+  test('project channels follow naming convention', () => {
+    expect(IPC_CHANNELS.PROJECT_LIST).toBe('project:list')
+    expect(IPC_CHANNELS.PROJECT_CREATE).toBe('project:create')
+    expect(IPC_CHANNELS.PROJECT_GET).toBe('project:get')
+    expect(IPC_CHANNELS.PROJECT_RENAME).toBe('project:rename')
+    expect(IPC_CHANNELS.PROJECT_DELETE).toBe('project:delete')
+    expect(IPC_CHANNELS.PROJECT_PICK_DIR).toBe('project:pickDir')
+  })
+
   test('all channels use domain:action pattern', () => {
     const values = Object.values(IPC_CHANNELS)
     for (const channel of values) {

@@ -5,6 +5,7 @@ import type {
   ModelConfig,
   AutomationCreateInput,
   AutomationRun,
+  ProjectCreateInput,
   DesktopPermissionMode,
   PermissionDecisionAction,
   PermissionScope,
@@ -157,6 +158,26 @@ const nexaworkAPI = {
         ipcRenderer.removeListener(IPC_CHANNELS.AUTOMATION_RUN_EVENT, handler)
       }
     },
+  },
+
+  // === Project (N20) ===
+  project: {
+    list: (input?: { query?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_LIST, input ?? {}),
+
+    create: (input: ProjectCreateInput) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_CREATE, input),
+
+    get: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_GET, input),
+
+    rename: (input: { id: string; name: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_RENAME, input),
+
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DELETE, input),
+
+    pickDir: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_PICK_DIR),
   },
 
   // === Settings ===
