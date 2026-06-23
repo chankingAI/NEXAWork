@@ -10,6 +10,9 @@ import type {
   PermissionDecisionAction,
   PermissionScope,
   PermissionRequest,
+  ExportScope,
+  ExportFormat,
+  ConflictStrategy,
 } from '../shared/ipc-channels'
 
 /**
@@ -224,6 +227,41 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.MEMORY_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Data management (N23) ===
+  data: {
+    stats: () => ipcRenderer.invoke(IPC_CHANNELS.DATA_STATS),
+
+    export: (input: {
+      scope: ExportScope
+      format: ExportFormat
+      startDate?: string
+      endDate?: string
+      sessionIds?: string[]
+    }) => ipcRenderer.invoke(IPC_CHANNELS.DATA_EXPORT, input),
+
+    import: (input: { content: string; strategy?: ConflictStrategy }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.DATA_IMPORT, input),
+
+    clearSessions: () => ipcRenderer.invoke(IPC_CHANNELS.DATA_CLEAR_SESSIONS),
+
+    clearCache: () => ipcRenderer.invoke(IPC_CHANNELS.DATA_CLEAR_CACHE),
+
+    resetSettings: () => ipcRenderer.invoke(IPC_CHANNELS.DATA_RESET_SETTINGS),
+
+    backup: () => ipcRenderer.invoke(IPC_CHANNELS.DATA_BACKUP),
+
+    restore: (input: { content: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.DATA_RESTORE, input),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.DATA_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.DATA_CHANGED, handler)
       }
     },
   },

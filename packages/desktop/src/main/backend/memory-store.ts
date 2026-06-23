@@ -109,6 +109,12 @@ export class MemoryStore {
     this.persist()
   }
 
+  /** Replace every entry at once (lossless restore for N23 backup). */
+  replaceAll(entries: MemoryEntry[]): void {
+    this.data.entries = [...entries]
+    this.persist()
+  }
+
   /**
    * Drop entries older than `retentionDays`. Returns the number pruned so the
    * caller can react (e.g. broadcast a refresh).

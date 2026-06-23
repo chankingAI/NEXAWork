@@ -12,6 +12,10 @@ import {
   SETTINGS_NAV_ITEMS,
   SYSTEM_CONTROLS,
 } from '../renderer/components/SettingsPage'
+import {
+  DATA_SECTIONS,
+  formatBytes,
+} from '../renderer/components/DataManagementPage'
 import { translate } from '../renderer/i18n'
 import { DEFAULT_SETTINGS, LANGUAGE_CODES } from '../shared/settings'
 
@@ -165,6 +169,76 @@ describe('N22 i18n section keys resolve in every language', () => {
       'model.test.failure',
     ] as const
     for (const lang of LANGUAGE_CODES) {
+      for (const key of keys) {
+        expect(translate(lang, key).length).toBeGreaterThan(0)
+      }
+    }
+  })
+})
+
+describe('N23 DataManagementPage', () => {
+  test('exposes the four data sections in order', () => {
+    expect(DATA_SECTIONS.map(s => s.id)).toEqual([
+      'export',
+      'import',
+      'clear',
+      'backup',
+    ])
+  })
+
+  test('section ids are unique', () => {
+    const ids = DATA_SECTIONS.map(s => s.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test('formatBytes renders human-readable sizes', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(512)).toBe('512 B')
+    expect(formatBytes(2048)).toBe('2.0 KB')
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB')
+  })
+
+  test('data section labels and i18n keys resolve in every language', () => {
+    const keys = [
+      'data.title',
+      'data.stats.title',
+      'data.stats.sessions',
+      'data.stats.messages',
+      'data.stats.skills',
+      'data.stats.disk',
+      'data.export.title',
+      'data.export.scope.all',
+      'data.export.scope.dateRange',
+      'data.export.scope.sessions',
+      'data.export.format.json',
+      'data.export.format.markdown',
+      'data.export.button',
+      'data.export.success',
+      'data.import.title',
+      'data.import.strategy.skip',
+      'data.import.strategy.overwrite',
+      'data.import.button',
+      'data.import.success',
+      'data.import.invalid',
+      'data.clear.title',
+      'data.clear.sessions.label',
+      'data.clear.sessions.confirm1',
+      'data.clear.sessions.confirm2',
+      'data.clear.cache.label',
+      'data.clear.reset.label',
+      'data.clear.reset.confirm',
+      'data.backup.title',
+      'data.backup.button',
+      'data.backup.success',
+      'data.restore.label',
+      'data.restore.confirm',
+      'data.restore.success',
+      'data.confirm.continue',
+    ] as const
+    for (const lang of LANGUAGE_CODES) {
+      for (const section of DATA_SECTIONS) {
+        expect(translate(lang, section.labelKey).length).toBeGreaterThan(0)
+      }
       for (const key of keys) {
         expect(translate(lang, key).length).toBeGreaterThan(0)
       }

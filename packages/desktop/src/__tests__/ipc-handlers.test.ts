@@ -125,20 +125,30 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('permission:log:list')
     expect(registeredChannels).toContain('permission:log:clear')
 
+    // Data management (8: N23; DATA_CHANGED is push-only)
+    expect(registeredChannels).toContain('data:stats')
+    expect(registeredChannels).toContain('data:export')
+    expect(registeredChannels).toContain('data:import')
+    expect(registeredChannels).toContain('data:clearSessions')
+    expect(registeredChannels).toContain('data:clearCache')
+    expect(registeredChannels).toContain('data:resetSettings')
+    expect(registeredChannels).toContain('data:backup')
+    expect(registeredChannels).toContain('data:restore')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 60 channels registered', async () => {
+  test('total handler count: 68 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
-    // + 4 window + 2 app = 60
-    expect(mockHandlers.size).toBe(60)
+    // + 8 data (N23) + 4 window + 2 app = 68
+    expect(mockHandlers.size).toBe(68)
   })
 })
 
@@ -824,5 +834,138 @@ describe('Handler Logic: App & Window', () => {
     const mockEvent = { sender: {} }
     const result = await handler(mockEvent)
     expect(typeof result).toBe('boolean')
+  })
+})
+
+describe('Handler Logic: Data management (N23)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  async function seedSession(title: string, message: string) {
+    const create = mockHandlers.get('session:create')!
+    const session = await create({}, { title })
+    const send = mockHandlers.get('chat:send')!
+    await send({}, { sessionId: session.id, message })
+    return session
+  }
+
+  test('data:stats returns counts and disk usage', async () => {
+    await seedSession('Stats Session', 'hi')
+    const handler = mockHandlers.get('data:stats')!
+    const stats = await handler({})
+    expect(stats.sessionCount).toBeGreaterThan(0)
+    expect(stats.messageCount).toBeGreaterThan(0)
+    expect(typeof stats.skillCount).toBe('number')
+    expect(typeof stats.diskUsageBytes).toBe('number')
+    expect(stats.diskUsageBytes).toBeGreaterThan(0)
+  })
+
+  test('data:export (json) returns parseable content + timestamped filename', async () => {
+    await seedSession('Export JSON', 'hello world')
+    const handler = mockHandlers.get('data:export')!
+    const result = await handler({}, { scope: 'all', format: 'json' })
+    expect(result.format).toBe('json')
+    expect(result.filename).toMatch(/^nexawork-export-.*\.json$/)
+    expect(result.byteLength).toBeGreaterThan(0)
+    const parsed = JSON.parse(result.content)
+    expect(Array.isArray(parsed.sessions)).toBe(true)
+    expect(parsed.sessions.length).toBeGreaterThan(0)
+  })
+
+  test('data:export (markdown) returns readable text + .md filename', async () => {
+    await seedSession('Export Markdown', 'markdown body')
+    const handler = mockHandlers.get('data:export')!
+    const result = await handler({}, { scope: 'all', format: 'markdown' })
+    expect(result.format).toBe('markdown')
+    expect(result.filename).toMatch(/\.md$/)
+    expect(result.content).toContain('#')
+  })
+
+  test('data:import round-trips an exported bundle (overwrite)', async () => {
+    await seedSession('Round Trip', 'persist me')
+    const exportHandler = mockHandlers.get('data:export')!
+    const exported = await exportHandler({}, { scope: 'all', format: 'json' })
+
+    const clearHandler = mockHandlers.get('data:clearSessions')!
+    await clearHandler({})
+
+    const importHandler = mockHandlers.get('data:import')!
+    const result = await importHandler(
+      {},
+      { content: exported.content, strategy: 'overwrite' },
+    )
+    expect(result.stats.importedSessions).toBeGreaterThan(0)
+
+    const statsHandler = mockHandlers.get('data:stats')!
+    const stats = await statsHandler({})
+    expect(stats.sessionCount).toBeGreaterThan(0)
+  })
+
+  test('data:import rejects invalid content', async () => {
+    const handler = mockHandlers.get('data:import')!
+    await expect(handler({}, { content: 'not-json' })).rejects.toBeDefined()
+  })
+
+  test('data:clearSessions empties sessions and reports cleared count', async () => {
+    await seedSession('To Clear', 'bye')
+    const handler = mockHandlers.get('data:clearSessions')!
+    const result = await handler({})
+    expect(result.success).toBe(true)
+    expect(result.cleared).toBeGreaterThan(0)
+
+    const statsHandler = mockHandlers.get('data:stats')!
+    const stats = await statsHandler({})
+    expect(stats.sessionCount).toBe(0)
+  })
+
+  test('data:clearCache succeeds', async () => {
+    const handler = mockHandlers.get('data:clearCache')!
+    const result = await handler({})
+    expect(result.success).toBe(true)
+  })
+
+  test('data:resetSettings restores defaults', async () => {
+    const setHandler = mockHandlers.get('settings:set')!
+    await setHandler({}, { key: 'fontSize', value: 20 })
+
+    const resetHandler = mockHandlers.get('data:resetSettings')!
+    const result = await resetHandler({})
+    expect(result.success).toBe(true)
+
+    const getHandler = mockHandlers.get('settings:get')!
+    const all = await getHandler({}, {})
+    expect(all.fontSize).not.toBe(20)
+  })
+
+  test('data:backup produces a full json snapshot', async () => {
+    await seedSession('Backup Session', 'snapshot me')
+    const handler = mockHandlers.get('data:backup')!
+    const result = await handler({})
+    expect(result.filename).toMatch(/^nexawork-backup-.*\.json$/)
+    const parsed = JSON.parse(result.content)
+    expect(Array.isArray(parsed.sessions)).toBe(true)
+  })
+
+  test('data:restore replaces all data losslessly', async () => {
+    await seedSession('Restore Source', 'restore body')
+    const backupHandler = mockHandlers.get('data:backup')!
+    const backup = await backupHandler({})
+
+    const clearHandler = mockHandlers.get('data:clearSessions')!
+    await clearHandler({})
+
+    const restoreHandler = mockHandlers.get('data:restore')!
+    const result = await restoreHandler({}, { content: backup.content })
+    expect(result.success).toBe(true)
+    expect(result.stats.sessionCount).toBeGreaterThan(0)
+  })
+
+  test('data:restore rejects invalid content', async () => {
+    const handler = mockHandlers.get('data:restore')!
+    await expect(handler({}, { content: '{bad' })).rejects.toBeDefined()
   })
 })
