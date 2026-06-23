@@ -6,12 +6,17 @@ import { WelcomeView } from './components/WelcomeView';
 import { ChatView } from './components/ChatView';
 import { AutomationPanel } from './components/AutomationPanel';
 import { ProjectPage } from './components/ProjectPage';
+import { SettingsPage } from './components/SettingsPage';
+import { useSettings } from './hooks/useSettings';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeNav, setActiveNav] = useState<NavigationId>('assistant');
   const scene = useScene('office');
+  // Load persisted settings once and apply them globally (font size, language,
+  // reading mode) so they take effect app-wide regardless of the active view.
+  useSettings();
 
   const handleNewSession = useCallback(() => {
     const id = `session-${Date.now()}`;
@@ -67,6 +72,8 @@ export function App() {
               <AutomationPanel />
             ) : activeNav === 'projects' ? (
               <ProjectPage />
+            ) : activeNav === 'settings' ? (
+              <SettingsPage />
             ) : activeSessionId ? (
               <ChatView sessionId={activeSessionId} />
             ) : (

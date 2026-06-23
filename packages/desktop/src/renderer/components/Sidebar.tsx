@@ -408,6 +408,21 @@ export function Sidebar({
             </button>
           </Tooltip>
 
+          {/* Settings (expanded mode) */}
+          {!collapsed && (
+            <button
+              onClick={() => onNavigate('settings')}
+              className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--duration-fast)] hover:bg-[var(--color-bg-hover)] ${
+                activeNav === 'settings'
+                  ? 'text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
+              }`}
+              aria-label="Settings"
+            >
+              <Settings size={14} />
+            </button>
+          )}
+
           {/* Help */}
           {!collapsed && (
             <button

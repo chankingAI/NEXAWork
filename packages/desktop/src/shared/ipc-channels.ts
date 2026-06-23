@@ -65,6 +65,7 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_RESET: 'settings:reset',
+  SETTINGS_CHANGED: 'settings:changed', // push: main → renderer
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -286,6 +287,10 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.SETTINGS_RESET]: {
     input: { key?: string }
     output: { success: boolean }
+  }
+  [IPC_CHANNELS.SETTINGS_CHANGED]: {
+    input: Record<string, never>
+    output: Record<string, unknown>
   }
 
   // Window
