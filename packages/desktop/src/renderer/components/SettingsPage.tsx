@@ -7,7 +7,7 @@
  * (Switch / Slider / Select). All changes apply instantly and are written to
  * `settings.json` in the main process via the `useSettings` hook.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as RSwitch from '@radix-ui/react-switch';
 import * as RSlider from '@radix-ui/react-slider';
 import * as RSelect from '@radix-ui/react-select';
@@ -18,24 +18,41 @@ import {
   ChevronDown,
   Cpu,
   Database,
+  Eye,
+  EyeOff,
   HelpCircle,
   type LucideIcon,
   Palette,
   Settings as SettingsIcon,
   Shield,
   Sparkles,
+  Trash2,
   User,
 } from 'lucide-react';
 import {
   type AppSettings,
+  ASSISTANT_AVATARS,
+  AVAILABLE_TOOLS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_SIZE_STEP,
   LANGUAGE_CODES,
+  MAX_TOKENS_MAX,
+  MAX_TOKENS_MIN,
+  MAX_TOKENS_STEP,
+  MEMORY_FREQUENCIES,
+  MEMORY_RETENTION_MAX,
+  MEMORY_RETENTION_MIN,
+  REPLY_STYLES,
   SEND_KEYS,
+  TEMPERATURE_MAX,
+  TEMPERATURE_MIN,
+  TEMPERATURE_STEP,
 } from '../../shared/settings';
+import type { ModelInfo } from '../../shared/ipc-channels';
 import type { MessageKey } from '../i18n';
 import { useI18n } from '../hooks/useI18n';
+import { useMemory } from '../hooks/useMemory';
 import { useSettings } from '../hooks/useSettings';
 
 // ─── Navigation model (exported for tests) ────────────────────
@@ -133,6 +150,41 @@ export const SYSTEM_CONTROLS: SystemControl[] = [
   },
 ];
 
+// ─── N22 control catalogs (exported for tests) ────────────────
+export const AGENT_CONTROL_KEYS = [
+  'systemPrompt',
+  'temperature',
+  'maxTokens',
+  'enabledTools',
+] as const satisfies readonly (keyof AppSettings)[];
+
+export const ASSISTANT_CONTROL_KEYS = [
+  'assistantName',
+  'assistantAvatar',
+  'assistantGreeting',
+  'replyStyle',
+] as const satisfies readonly (keyof AppSettings)[];
+
+export const MEMORY_CONTROL_KEYS = [
+  'memoryEnabled',
+  'memoryFrequency',
+  'memoryRetentionDays',
+] as const satisfies readonly (keyof AppSettings)[];
+
+/** API-key providers exposed in the model tab (matches engine providers). */
+export interface ModelApiProvider {
+  id: string;
+  label: string;
+}
+export const MODEL_API_PROVIDERS: ModelApiProvider[] = [
+  { id: 'anthropic', label: 'Anthropic' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'gemini', label: 'Google Gemini' },
+  { id: 'grok', label: 'xAI Grok' },
+  { id: 'bedrock', label: 'AWS Bedrock' },
+  { id: 'vertex', label: 'Google Vertex' },
+];
+
 // ─── Radix-based primitives (Apple aesthetic) ─────────────────
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -178,6 +230,93 @@ function FontSizeSlider({
       <span className="text-base text-[var(--color-text-tertiary)]">{largeLabel}</span>
       <span className="w-9 text-right text-xs tabular-nums text-[var(--color-text-secondary)]">{value}px</span>
     </div>
+  );
+}
+
+function ValueSlider({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  format,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  format?: (v: number) => string;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="flex w-[260px] items-center gap-3">
+      <RSlider.Root
+        className="relative flex h-5 flex-1 touch-none select-none items-center"
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        onValueChange={([v]) => onChange(v)}
+        aria-label={ariaLabel}
+      >
+        <RSlider.Track className="relative h-1 flex-1 rounded-[var(--radius-full)] bg-[var(--color-bg-tertiary)]">
+          <RSlider.Range className="absolute h-full rounded-[var(--radius-full)] bg-[var(--color-text-primary)]" />
+        </RSlider.Track>
+        <RSlider.Thumb className="block h-4 w-4 rounded-[var(--radius-full)] border border-[var(--color-border)] bg-white shadow-sm outline-none transition-transform focus-visible:ring-2 focus-visible:ring-[var(--color-accent-blue)] active:scale-95" />
+      </RSlider.Root>
+      <span className="w-12 text-right text-xs tabular-nums text-[var(--color-text-secondary)]">
+        {format ? format(value) : value}
+      </span>
+    </div>
+  );
+}
+
+function TextField({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  type = 'text',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  ariaLabel: string;
+  type?: 'text' | 'password';
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      onChange={e => onChange(e.target.value)}
+      className="h-9 w-[260px] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none transition-colors duration-[var(--duration-fast)] placeholder:text-[var(--color-text-tertiary)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent-blue)]"
+    />
+  );
+}
+
+function TextAreaField({
+  value,
+  onChange,
+  ariaLabel,
+  rows = 6,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+  rows?: number;
+}) {
+  return (
+    <textarea
+      value={value}
+      aria-label={ariaLabel}
+      rows={rows}
+      onChange={e => onChange(e.target.value)}
+      className="w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] outline-none transition-colors duration-[var(--duration-fast)] placeholder:text-[var(--color-text-tertiary)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent-blue)]"
+    />
   );
 }
 
@@ -238,6 +377,37 @@ function SettingRow({ label, description, control }: { label: string; descriptio
         <p className="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{description}</p>
       </div>
       <div className="flex-shrink-0">{control}</div>
+    </div>
+  );
+}
+
+/** A stacked row: label/description above a full-width control. */
+function SettingBlock({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="py-4">
+      <p className="text-sm font-medium text-[var(--color-text-primary)]">{label}</p>
+      <p className="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{description}</p>
+      <div className="mt-3">{children}</div>
+    </div>
+  );
+}
+
+/** Section wrapper matching SystemSettingsTab's card styling. */
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mx-auto w-full max-w-[680px] px-8 py-6">
+      <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{title}</h2>
+      <div className="mt-4 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-5">
+        {children}
+      </div>
     </div>
   );
 }
@@ -313,6 +483,446 @@ function SystemSettingsTab() {
   );
 }
 
+// ─── Agent settings tab (N22) ─────────────────────────────────
+function AgentSettingsTab() {
+  const { t } = useI18n();
+  const { settings, setSetting } = useSettings();
+
+  function toggleTool(tool: string, on: boolean) {
+    const next = on ? [...new Set([...settings.enabledTools, tool])] : settings.enabledTools.filter(x => x !== tool);
+    setSetting('enabledTools', next);
+  }
+
+  return (
+    <SettingsSection title={t('agent.title')}>
+      <SettingBlock label={t('agent.systemPrompt.label')} description={t('agent.systemPrompt.desc')}>
+        <TextAreaField
+          ariaLabel={t('agent.systemPrompt.label')}
+          value={settings.systemPrompt}
+          rows={6}
+          onChange={v => setSetting('systemPrompt', v)}
+        />
+      </SettingBlock>
+      <SettingRow
+        label={t('agent.temperature.label')}
+        description={t('agent.temperature.desc')}
+        control={
+          <ValueSlider
+            ariaLabel={t('agent.temperature.label')}
+            value={settings.temperature}
+            min={TEMPERATURE_MIN}
+            max={TEMPERATURE_MAX}
+            step={TEMPERATURE_STEP}
+            format={v => v.toFixed(1)}
+            onChange={v => setSetting('temperature', v)}
+          />
+        }
+      />
+      <SettingRow
+        label={t('agent.maxTokens.label')}
+        description={t('agent.maxTokens.desc')}
+        control={
+          <ValueSlider
+            ariaLabel={t('agent.maxTokens.label')}
+            value={settings.maxTokens}
+            min={MAX_TOKENS_MIN}
+            max={MAX_TOKENS_MAX}
+            step={MAX_TOKENS_STEP}
+            onChange={v => setSetting('maxTokens', v)}
+          />
+        }
+      />
+      <SettingBlock label={t('agent.enabledTools.label')} description={t('agent.enabledTools.desc')}>
+        <div className="grid grid-cols-3 gap-2">
+          {AVAILABLE_TOOLS.map(tool => {
+            const on = settings.enabledTools.includes(tool);
+            return (
+              <button
+                key={tool}
+                type="button"
+                onClick={() => toggleTool(tool, !on)}
+                aria-pressed={on}
+                className={`flex items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2 text-left text-xs transition-colors duration-[var(--duration-fast)] ${
+                  on
+                    ? 'border-[var(--color-text-primary)] bg-[var(--color-bg-hover)] text-[var(--color-text-primary)]'
+                    : 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
+                }`}
+              >
+                <span
+                  className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[var(--radius-sm)] border ${
+                    on
+                      ? 'border-[var(--color-text-primary)] bg-[var(--color-text-primary)] text-white'
+                      : 'border-[var(--color-border)]'
+                  }`}
+                >
+                  {on ? <Check size={11} /> : null}
+                </span>
+                <span className="truncate font-mono">{tool}</span>
+              </button>
+            );
+          })}
+        </div>
+      </SettingBlock>
+    </SettingsSection>
+  );
+}
+
+// ─── Assistant settings tab (N22) ─────────────────────────────
+function AssistantSettingsTab() {
+  const { t } = useI18n();
+  const { settings, setSetting } = useSettings();
+
+  const replyStyleOptions = REPLY_STYLES.map(style => ({
+    value: style,
+    label: t(`replyStyle.${style}` as MessageKey),
+  }));
+
+  return (
+    <SettingsSection title={t('assistant.title')}>
+      <SettingRow
+        label={t('assistant.name.label')}
+        description={t('assistant.name.desc')}
+        control={
+          <TextField
+            ariaLabel={t('assistant.name.label')}
+            value={settings.assistantName}
+            onChange={v => setSetting('assistantName', v)}
+          />
+        }
+      />
+      <SettingBlock label={t('assistant.avatar.label')} description={t('assistant.avatar.desc')}>
+        <div className="flex flex-wrap gap-2">
+          {ASSISTANT_AVATARS.map(avatar => {
+            const active = settings.assistantAvatar === avatar;
+            return (
+              <button
+                key={avatar}
+                type="button"
+                onClick={() => setSetting('assistantAvatar', avatar)}
+                aria-label={avatar}
+                aria-pressed={active}
+                className={`flex h-11 w-11 items-center justify-center rounded-[var(--radius-md)] border text-xl transition-colors duration-[var(--duration-fast)] ${
+                  active
+                    ? 'border-[var(--color-text-primary)] bg-[var(--color-bg-hover)]'
+                    : 'border-[var(--color-border)] hover:bg-[var(--color-bg-hover)]'
+                }`}
+              >
+                {avatar}
+              </button>
+            );
+          })}
+        </div>
+      </SettingBlock>
+      <SettingBlock label={t('assistant.greeting.label')} description={t('assistant.greeting.desc')}>
+        <TextAreaField
+          ariaLabel={t('assistant.greeting.label')}
+          value={settings.assistantGreeting}
+          rows={3}
+          onChange={v => setSetting('assistantGreeting', v)}
+        />
+      </SettingBlock>
+      <SettingRow
+        label={t('assistant.replyStyle.label')}
+        description={t('assistant.replyStyle.desc')}
+        control={
+          <Dropdown
+            ariaLabel={t('assistant.replyStyle.label')}
+            value={settings.replyStyle}
+            options={replyStyleOptions}
+            onChange={v => setSetting('replyStyle', v as AppSettings['replyStyle'])}
+          />
+        }
+      />
+    </SettingsSection>
+  );
+}
+
+// ─── Memory settings tab (N22) ────────────────────────────────
+function MemorySettingsTab() {
+  const { t, lang } = useI18n();
+  const { settings, setSetting } = useSettings();
+  const { entries, remove, clear } = useMemory();
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
+  const frequencyOptions = MEMORY_FREQUENCIES.map(freq => ({
+    value: freq,
+    label: t(`memoryFreq.${freq}` as MessageKey),
+  }));
+
+  return (
+    <SettingsSection title={t('memory.title')}>
+      <SettingRow
+        label={t('memory.enabled.label')}
+        description={t('memory.enabled.desc')}
+        control={
+          <Toggle
+            label={t('memory.enabled.label')}
+            checked={settings.memoryEnabled}
+            onChange={v => setSetting('memoryEnabled', v)}
+          />
+        }
+      />
+      <SettingRow
+        label={t('memory.frequency.label')}
+        description={t('memory.frequency.desc')}
+        control={
+          <Dropdown
+            ariaLabel={t('memory.frequency.label')}
+            value={settings.memoryFrequency}
+            options={frequencyOptions}
+            onChange={v => setSetting('memoryFrequency', v as AppSettings['memoryFrequency'])}
+          />
+        }
+      />
+      <SettingRow
+        label={t('memory.retention.label')}
+        description={t('memory.retention.desc')}
+        control={
+          <ValueSlider
+            ariaLabel={t('memory.retention.label')}
+            value={settings.memoryRetentionDays}
+            min={MEMORY_RETENTION_MIN}
+            max={MEMORY_RETENTION_MAX}
+            step={1}
+            onChange={v => setSetting('memoryRetentionDays', v)}
+          />
+        }
+      />
+      <SettingBlock label={t('memory.list.label')} description="">
+        {entries.length === 0 ? (
+          <p className="py-6 text-center text-xs text-[var(--color-text-tertiary)]">{t('memory.empty')}</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {entries.map(entry => (
+              <li
+                key={entry.id}
+                className="flex items-start justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-[var(--color-text-primary)]">{entry.content}</p>
+                  <p className="mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
+                    {entry.category} · {new Date(entry.createdAt).toLocaleString(lang)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void remove(entry.id)}
+                  aria-label={`${t('memory.category')} ${entry.id}`}
+                  className="flex-shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent-red,#e5484d)]"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-3 flex items-center gap-2">
+          {confirmingClear ? (
+            <>
+              <span className="text-xs text-[var(--color-text-secondary)]">{t('memory.clearConfirm')}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void clear();
+                  setConfirmingClear(false);
+                }}
+                className="rounded-[var(--radius-md)] bg-[var(--color-accent-red,#e5484d)] px-3 py-1.5 text-xs font-medium text-white"
+              >
+                {t('memory.clearAll')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)]"
+              >
+                {t('common.cancel')}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingClear(true)}
+              disabled={entries.length === 0}
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-accent-red,#e5484d)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-red,#e5484d)] transition-colors hover:bg-[var(--color-accent-red,#e5484d)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 size={13} />
+              {t('memory.clearAll')}
+            </button>
+          )}
+        </div>
+      </SettingBlock>
+    </SettingsSection>
+  );
+}
+
+// ─── Model settings tab (N22) ─────────────────────────────────
+type ApiKeyStatus = { configured: Record<string, boolean>; encryptionAvailable: boolean };
+type TestState = 'idle' | 'testing' | 'success' | 'failure';
+
+function ModelSettingsTab() {
+  const { t } = useI18n();
+  const { settings, setSetting } = useSettings();
+  const [models, setModels] = useState<{ value: string; label: string }[]>([]);
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [status, setStatus] = useState<ApiKeyStatus>({
+    configured: {},
+    encryptionAvailable: true,
+  });
+  const [testState, setTestState] = useState<TestState>('idle');
+
+  const refreshStatus = async () => {
+    const api = window.nexawork?.model;
+    if (!api) return;
+    const s = await api.apiKeyStatus();
+    setStatus(s);
+  };
+
+  useEffect(() => {
+    const api = window.nexawork?.model;
+    if (!api) return;
+    void api.list().then(({ models: list }: { models: ModelInfo[] }) => {
+      setModels(list.map((m: ModelInfo) => ({ value: m.id, label: m.name })));
+    });
+    void refreshStatus();
+  }, []);
+
+  async function saveKey(provider: string) {
+    const apiKey = keyDrafts[provider]?.trim();
+    if (!apiKey) return;
+    await window.nexawork?.model.setApiKey({ provider, apiKey });
+    setKeyDrafts(prev => ({ ...prev, [provider]: '' }));
+    await refreshStatus();
+  }
+
+  async function deleteKey(provider: string) {
+    await window.nexawork?.model.deleteApiKey({ provider });
+    await refreshStatus();
+  }
+
+  async function testConnection() {
+    setTestState('testing');
+    try {
+      const res = await window.nexawork?.model.test({ modelId: settings.model });
+      setTestState(res?.available ? 'success' : 'failure');
+    } catch {
+      setTestState('failure');
+    }
+  }
+
+  return (
+    <SettingsSection title={t('model.title')}>
+      <SettingRow
+        label={t('model.default.label')}
+        description={t('model.default.desc')}
+        control={
+          <Dropdown
+            ariaLabel={t('model.default.label')}
+            value={settings.model}
+            options={models.length > 0 ? models : [{ value: settings.model, label: settings.model }]}
+            onChange={v => {
+              setSetting('model', v);
+              void window.nexawork?.model.set({ modelId: v });
+            }}
+          />
+        }
+      />
+      <SettingBlock
+        label={t('model.apiKey.label')}
+        description={status.encryptionAvailable ? t('model.apiKey.desc') : t('model.encryption.unavailable')}
+      >
+        <div className="flex flex-col gap-2">
+          {MODEL_API_PROVIDERS.map(provider => {
+            const configured = status.configured[provider.id] === true;
+            return (
+              <div key={provider.id} className="flex items-center gap-2">
+                <span className="w-28 flex-shrink-0 text-xs text-[var(--color-text-secondary)]">{provider.label}</span>
+                <div className="relative flex-1">
+                  <TextField
+                    ariaLabel={`${provider.label} ${t('model.apiKey.label')}`}
+                    type={revealed[provider.id] ? 'text' : 'password'}
+                    placeholder={
+                      configured ? `••••••••  (${t('model.apiKey.configured')})` : t('model.apiKey.placeholder')
+                    }
+                    value={keyDrafts[provider.id] ?? ''}
+                    onChange={v => setKeyDrafts(prev => ({ ...prev, [provider.id]: v }))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRevealed(prev => ({
+                        ...prev,
+                        [provider.id]: !prev[provider.id],
+                      }))
+                    }
+                    aria-label="toggle visibility"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
+                  >
+                    {revealed[provider.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void saveKey(provider.id)}
+                  disabled={!keyDrafts[provider.id]?.trim()}
+                  className="flex-shrink-0 rounded-[var(--radius-md)] bg-[var(--color-text-primary)] px-3 py-1.5 text-xs font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  {t('common.save')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteKey(provider.id)}
+                  disabled={!configured}
+                  aria-label={`${provider.label} delete`}
+                  className="flex-shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </SettingBlock>
+      <SettingRow
+        label={t('model.customEndpoint.label')}
+        description={t('model.customEndpoint.desc')}
+        control={
+          <TextField
+            ariaLabel={t('model.customEndpoint.label')}
+            value={settings.customEndpoint}
+            placeholder="https://"
+            onChange={v => setSetting('customEndpoint', v)}
+          />
+        }
+      />
+      <SettingRow
+        label={t('model.test.label')}
+        description={t('model.test.desc')}
+        control={
+          <div className="flex items-center gap-3">
+            {testState === 'success' ? (
+              <span className="text-xs font-medium text-[var(--color-accent-green)]">{t('model.test.success')}</span>
+            ) : null}
+            {testState === 'failure' ? (
+              <span className="text-xs font-medium text-[var(--color-accent-red,#e5484d)]">
+                {t('model.test.failure')}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void testConnection()}
+              disabled={testState === 'testing'}
+              className="rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50"
+            >
+              {testState === 'testing' ? t('model.test.testing') : t('model.test.button')}
+            </button>
+          </div>
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 // ─── Placeholder tab (other nav items) ────────────────────────
 function PlaceholderTab({ title }: { title: string }) {
   const { t } = useI18n();
@@ -365,6 +975,14 @@ export function SettingsPage() {
       <div className="flex-1 overflow-y-auto">
         {activeId === 'system' ? (
           <SystemSettingsTab />
+        ) : activeId === 'agent' ? (
+          <AgentSettingsTab />
+        ) : activeId === 'assistant' ? (
+          <AssistantSettingsTab />
+        ) : activeId === 'memory' ? (
+          <MemorySettingsTab />
+        ) : activeId === 'model' ? (
+          <ModelSettingsTab />
         ) : (
           <PlaceholderTab title={t(SETTINGS_NAV_ITEMS.find(i => i.id === activeId)?.labelKey ?? 'nav.system')} />
         )}

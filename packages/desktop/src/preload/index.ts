@@ -81,6 +81,14 @@ const nexaworkAPI = {
 
     configure: (input: { modelId: string; config: ModelConfig }) =>
       ipcRenderer.invoke(IPC_CHANNELS.MODEL_CONFIGURE, input),
+
+    setApiKey: (input: { provider: string; apiKey: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_SET_API_KEY, input),
+
+    deleteApiKey: (input: { provider: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MODEL_DELETE_API_KEY, input),
+
+    apiKeyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.MODEL_API_KEY_STATUS),
   },
 
   // === Expert ===
@@ -195,6 +203,27 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.SETTINGS_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Memory (N22) ===
+  memory: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LIST),
+
+    add: (input: { content: string; category?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMORY_ADD, input),
+
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMORY_DELETE, input),
+
+    clear: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CLEAR),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.MEMORY_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.MEMORY_CHANGED, handler)
       }
     },
   },

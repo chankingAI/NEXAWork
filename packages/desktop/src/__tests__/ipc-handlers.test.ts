@@ -60,11 +60,20 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('session:delete')
     expect(registeredChannels).toContain('session:search')
 
-    // Model (4)
+    // Model (7: 4 core + 3 N22 API-key)
     expect(registeredChannels).toContain('model:list')
     expect(registeredChannels).toContain('model:set')
     expect(registeredChannels).toContain('model:test')
     expect(registeredChannels).toContain('model:configure')
+    expect(registeredChannels).toContain('model:apiKey:set')
+    expect(registeredChannels).toContain('model:apiKey:delete')
+    expect(registeredChannels).toContain('model:apiKey:status')
+
+    // Memory (4: N22 operationMemory)
+    expect(registeredChannels).toContain('memory:list')
+    expect(registeredChannels).toContain('memory:add')
+    expect(registeredChannels).toContain('memory:delete')
+    expect(registeredChannels).toContain('memory:clear')
 
     // Expert (5)
     expect(registeredChannels).toContain('expert:list')
@@ -121,13 +130,15 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 53 channels registered', async () => {
+  test('total handler count: 60 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
-    // 5 chat + 6 session + 4 model + 5 expert + 5 skill + 8 automation + 6 project + 3 settings + 5 permission + 4 window + 2 app = 53
-    expect(mockHandlers.size).toBe(53)
+    // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
+    // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
+    // + 4 window + 2 app = 60
+    expect(mockHandlers.size).toBe(60)
   })
 })
 
@@ -300,6 +311,111 @@ describe('Handler Logic: Model', () => {
       { modelId: 'auto', config: { temperature: 0.5 } },
     )
     expect(result.success).toBe(true)
+  })
+})
+
+describe('Handler Logic: Model API Keys (N22)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  test('model:apiKey:status starts with no configured providers', async () => {
+    const handler = mockHandlers.get('model:apiKey:status')!
+    const result = await handler({})
+    expect(result.configured).toBeDefined()
+    expect(typeof result.encryptionAvailable).toBe('boolean')
+  })
+
+  test('model:apiKey:set then status reports the provider configured', async () => {
+    const setHandler = mockHandlers.get('model:apiKey:set')!
+    expect(
+      (await setHandler({}, { provider: 'anthropic', apiKey: 'sk-1' })).success,
+    ).toBe(true)
+
+    const statusHandler = mockHandlers.get('model:apiKey:status')!
+    const result = await statusHandler({})
+    expect(result.configured.anthropic).toBe(true)
+  })
+
+  test('model:apiKey:delete clears a configured provider', async () => {
+    const setHandler = mockHandlers.get('model:apiKey:set')!
+    await setHandler({}, { provider: 'openai', apiKey: 'sk-2' })
+
+    const deleteHandler = mockHandlers.get('model:apiKey:delete')!
+    expect((await deleteHandler({}, { provider: 'openai' })).success).toBe(true)
+
+    const statusHandler = mockHandlers.get('model:apiKey:status')!
+    const result = await statusHandler({})
+    expect(result.configured.openai).toBeUndefined()
+  })
+
+  test('model:apiKey:set rejects a missing provider', async () => {
+    const setHandler = mockHandlers.get('model:apiKey:set')!
+    expect(setHandler({}, { provider: '', apiKey: 'x' })).rejects.toThrow()
+  })
+})
+
+describe('Handler Logic: Memory (N22)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  test('memory:add creates an entry and memory:list returns it', async () => {
+    const addHandler = mockHandlers.get('memory:add')!
+    const added = await addHandler({}, { content: 'user prefers dark mode' })
+    expect(added.entry.id).toMatch(/^mem-/)
+    expect(added.entry.content).toBe('user prefers dark mode')
+
+    const listHandler = mockHandlers.get('memory:list')!
+    const list = await listHandler({})
+    expect(list.total).toBeGreaterThan(0)
+    expect(
+      list.entries.some(
+        (e: { content: string }) => e.content === 'user prefers dark mode',
+      ),
+    ).toBe(true)
+  })
+
+  test('memory:add rejects empty content', async () => {
+    const addHandler = mockHandlers.get('memory:add')!
+    expect(addHandler({}, { content: '' })).rejects.toThrow()
+  })
+
+  test('memory:delete removes a single entry', async () => {
+    const addHandler = mockHandlers.get('memory:add')!
+    const added = await addHandler({}, { content: 'to delete' })
+
+    const deleteHandler = mockHandlers.get('memory:delete')!
+    expect((await deleteHandler({}, { id: added.entry.id })).success).toBe(true)
+
+    const listHandler = mockHandlers.get('memory:list')!
+    const list = await listHandler({})
+    expect(
+      list.entries.some((e: { id: string }) => e.id === added.entry.id),
+    ).toBe(false)
+  })
+
+  test('memory:delete requires an id', async () => {
+    const deleteHandler = mockHandlers.get('memory:delete')!
+    expect(deleteHandler({}, {})).rejects.toThrow()
+  })
+
+  test('memory:clear empties the store', async () => {
+    const addHandler = mockHandlers.get('memory:add')!
+    await addHandler({}, { content: 'a' })
+    await addHandler({}, { content: 'b' })
+
+    const clearHandler = mockHandlers.get('memory:clear')!
+    expect((await clearHandler({})).success).toBe(true)
+
+    const listHandler = mockHandlers.get('memory:list')!
+    expect((await listHandler({})).total).toBe(0)
   })
 })
 

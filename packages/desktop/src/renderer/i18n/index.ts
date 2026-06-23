@@ -65,6 +65,74 @@ const zhCN = {
   'theme.light': '浅色',
   'theme.dark': '深色',
   'theme.system': '跟随系统',
+
+  // Common (N22)
+  'common.save': '保存',
+  'common.cancel': '取消',
+  'common.delete': '删除',
+
+  // Agent settings tab (N22)
+  'agent.title': '智能体设置',
+  'agent.systemPrompt.label': 'System Prompt',
+  'agent.systemPrompt.desc':
+    '定义智能体的角色与行为，支持 Markdown，修改后即时生效。',
+  'agent.temperature.label': '温度',
+  'agent.temperature.desc': '控制回复的随机性，越低越稳定，越高越发散。',
+  'agent.maxTokens.label': '最大 Token',
+  'agent.maxTokens.desc': '限制单次回复的最大长度。',
+  'agent.enabledTools.label': '启用的工具',
+  'agent.enabledTools.desc': '勾选允许智能体调用的工具。',
+
+  // Assistant settings tab (N22)
+  'assistant.title': '助理设置',
+  'assistant.name.label': '助理名称',
+  'assistant.name.desc': '自定义助理在对话中显示的名称。',
+  'assistant.avatar.label': '助理头像',
+  'assistant.avatar.desc': '从预设中选择一个头像。',
+  'assistant.greeting.label': '问候语',
+  'assistant.greeting.desc': '开启新对话时助理的第一句话。',
+  'assistant.replyStyle.label': '回复风格',
+  'assistant.replyStyle.desc': '设置助理回复的整体语气。',
+  'replyStyle.professional': '专业',
+  'replyStyle.friendly': '友好',
+  'replyStyle.concise': '简洁',
+
+  // Memory settings tab (N22)
+  'memory.title': '记忆',
+  'memory.enabled.label': '记忆总开关',
+  'memory.enabled.desc': '开启后，助理会记录并利用操作记忆。',
+  'memory.frequency.label': '记忆频率',
+  'memory.frequency.desc': '设置操作记忆的记录频率。',
+  'memoryFreq.always': '总是',
+  'memoryFreq.smart': '智能',
+  'memoryFreq.manual': '手动',
+  'memory.retention.label': '保留时长（天）',
+  'memory.retention.desc': '超过该天数的记忆会被自动清理。',
+  'memory.list.label': '记忆内容',
+  'memory.empty': '暂无记忆记录。',
+  'memory.clearAll': '清空所有记忆',
+  'memory.clearConfirm': '确定要清空所有记忆吗？此操作不可撤销。',
+  'memory.category': '分类',
+  'memory.createdAt': '时间',
+
+  // Model settings tab (N22)
+  'model.title': '模型',
+  'model.default.label': '默认模型',
+  'model.default.desc': '选择新对话默认使用的模型。',
+  'model.apiKey.label': 'API Key',
+  'model.apiKey.desc': '各服务商的 API Key 通过系统加密存储。',
+  'model.apiKey.placeholder': '输入 API Key',
+  'model.apiKey.configured': '已配置',
+  'model.apiKey.notConfigured': '未配置',
+  'model.customEndpoint.label': '自定义端点',
+  'model.customEndpoint.desc': '覆盖默认服务商地址（可选）。',
+  'model.test.label': '连接测试',
+  'model.test.desc': '发送测试请求验证模型是否可用。',
+  'model.test.button': '测试连接',
+  'model.test.testing': '测试中…',
+  'model.test.success': '连接成功',
+  'model.test.failure': '连接失败，请检查 API Key 与端点',
+  'model.encryption.unavailable': '系统加密不可用，将以本地编码降级保存。',
 } as const
 
 export type MessageKey = keyof typeof zhCN
@@ -122,6 +190,73 @@ const en: Messages = {
   'theme.light': 'Light',
   'theme.dark': 'Dark',
   'theme.system': 'System',
+
+  'common.save': 'Save',
+  'common.cancel': 'Cancel',
+  'common.delete': 'Delete',
+
+  'agent.title': 'Agent',
+  'agent.systemPrompt.label': 'System Prompt',
+  'agent.systemPrompt.desc':
+    'Define the agent role and behaviour. Markdown supported; changes apply immediately.',
+  'agent.temperature.label': 'Temperature',
+  'agent.temperature.desc':
+    'Controls reply randomness — lower is more focused, higher is more creative.',
+  'agent.maxTokens.label': 'Max tokens',
+  'agent.maxTokens.desc': 'Limit the maximum length of a single reply.',
+  'agent.enabledTools.label': 'Enabled tools',
+  'agent.enabledTools.desc': 'Select which tools the agent may use.',
+
+  'assistant.title': 'Assistant',
+  'assistant.name.label': 'Assistant name',
+  'assistant.name.desc': 'Customise the name shown for the assistant.',
+  'assistant.avatar.label': 'Assistant avatar',
+  'assistant.avatar.desc': 'Pick an avatar from the presets.',
+  'assistant.greeting.label': 'Greeting',
+  'assistant.greeting.desc': 'The first message shown in a new conversation.',
+  'assistant.replyStyle.label': 'Reply style',
+  'assistant.replyStyle.desc': 'Set the overall tone of replies.',
+  'replyStyle.professional': 'Professional',
+  'replyStyle.friendly': 'Friendly',
+  'replyStyle.concise': 'Concise',
+
+  'memory.title': 'Memory',
+  'memory.enabled.label': 'Memory master switch',
+  'memory.enabled.desc':
+    'When on, the assistant records and uses operation memories.',
+  'memory.frequency.label': 'Memory frequency',
+  'memory.frequency.desc': 'How often operation memories are recorded.',
+  'memoryFreq.always': 'Always',
+  'memoryFreq.smart': 'Smart',
+  'memoryFreq.manual': 'Manual',
+  'memory.retention.label': 'Retention (days)',
+  'memory.retention.desc': 'Memories older than this are pruned automatically.',
+  'memory.list.label': 'Memory entries',
+  'memory.empty': 'No memories yet.',
+  'memory.clearAll': 'Clear all memories',
+  'memory.clearConfirm': 'Clear all memories? This action cannot be undone.',
+  'memory.category': 'Category',
+  'memory.createdAt': 'Time',
+
+  'model.title': 'Models',
+  'model.default.label': 'Default model',
+  'model.default.desc':
+    'Choose the model used by default for new conversations.',
+  'model.apiKey.label': 'API key',
+  'model.apiKey.desc': 'API keys per provider are stored encrypted by the OS.',
+  'model.apiKey.placeholder': 'Enter API key',
+  'model.apiKey.configured': 'Configured',
+  'model.apiKey.notConfigured': 'Not configured',
+  'model.customEndpoint.label': 'Custom endpoint',
+  'model.customEndpoint.desc': 'Override the default provider URL (optional).',
+  'model.test.label': 'Connection test',
+  'model.test.desc': 'Send a test request to verify the model is reachable.',
+  'model.test.button': 'Test connection',
+  'model.test.testing': 'Testing…',
+  'model.test.success': 'Connection successful',
+  'model.test.failure': 'Connection failed — check the API key and endpoint',
+  'model.encryption.unavailable':
+    'OS encryption unavailable; keys will be saved with a local fallback.',
 }
 
 const ja: Messages = {
@@ -176,6 +311,75 @@ const ja: Messages = {
   'theme.light': 'ライト',
   'theme.dark': 'ダーク',
   'theme.system': 'システム',
+
+  'common.save': '保存',
+  'common.cancel': 'キャンセル',
+  'common.delete': '削除',
+
+  'agent.title': 'エージェント設定',
+  'agent.systemPrompt.label': 'システムプロンプト',
+  'agent.systemPrompt.desc':
+    'エージェントの役割と振る舞いを定義します。Markdown 対応・変更は即時反映。',
+  'agent.temperature.label': '温度',
+  'agent.temperature.desc':
+    '返信のランダム性を制御します。低いほど安定、高いほど多様になります。',
+  'agent.maxTokens.label': '最大トークン',
+  'agent.maxTokens.desc': '1 回の返信の最大長を制限します。',
+  'agent.enabledTools.label': '有効なツール',
+  'agent.enabledTools.desc': 'エージェントが使用できるツールを選択します。',
+
+  'assistant.title': 'アシスタント設定',
+  'assistant.name.label': 'アシスタント名',
+  'assistant.name.desc': '会話で表示されるアシスタント名をカスタマイズします。',
+  'assistant.avatar.label': 'アシスタントアイコン',
+  'assistant.avatar.desc': 'プリセットからアイコンを選択します。',
+  'assistant.greeting.label': 'あいさつ',
+  'assistant.greeting.desc': '新しい会話を開始したときの最初のメッセージ。',
+  'assistant.replyStyle.label': '返信スタイル',
+  'assistant.replyStyle.desc': '返信全体のトーンを設定します。',
+  'replyStyle.professional': 'プロフェッショナル',
+  'replyStyle.friendly': 'フレンドリー',
+  'replyStyle.concise': '簡潔',
+
+  'memory.title': 'メモリ',
+  'memory.enabled.label': 'メモリのマスタースイッチ',
+  'memory.enabled.desc': 'オンにすると、操作メモリを記録・活用します。',
+  'memory.frequency.label': 'メモリ頻度',
+  'memory.frequency.desc': '操作メモリを記録する頻度を設定します。',
+  'memoryFreq.always': '常時',
+  'memoryFreq.smart': 'スマート',
+  'memoryFreq.manual': '手動',
+  'memory.retention.label': '保持期間（日）',
+  'memory.retention.desc': 'この日数を超えたメモリは自動的に削除されます。',
+  'memory.list.label': 'メモリ一覧',
+  'memory.empty': 'メモリはまだありません。',
+  'memory.clearAll': 'すべてのメモリを消去',
+  'memory.clearConfirm':
+    'すべてのメモリを消去しますか？この操作は取り消せません。',
+  'memory.category': 'カテゴリ',
+  'memory.createdAt': '時刻',
+
+  'model.title': 'モデル',
+  'model.default.label': 'デフォルトモデル',
+  'model.default.desc': '新しい会話で既定で使用するモデルを選択します。',
+  'model.apiKey.label': 'API キー',
+  'model.apiKey.desc':
+    'プロバイダーごとの API キーは OS により暗号化保存されます。',
+  'model.apiKey.placeholder': 'API キーを入力',
+  'model.apiKey.configured': '設定済み',
+  'model.apiKey.notConfigured': '未設定',
+  'model.customEndpoint.label': 'カスタムエンドポイント',
+  'model.customEndpoint.desc':
+    '既定のプロバイダー URL を上書きします（任意）。',
+  'model.test.label': '接続テスト',
+  'model.test.desc': 'テストリクエストを送信してモデルの到達性を確認します。',
+  'model.test.button': '接続をテスト',
+  'model.test.testing': 'テスト中…',
+  'model.test.success': '接続に成功しました',
+  'model.test.failure':
+    '接続に失敗しました。API キーとエンドポイントを確認してください',
+  'model.encryption.unavailable':
+    'OS 暗号化が利用できないため、ローカルのフォールバックで保存します。',
 }
 
 const DICTIONARIES: Record<LanguageCode, Messages> = {

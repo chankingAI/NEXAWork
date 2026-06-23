@@ -3,17 +3,29 @@
  */
 import { describe, test, expect } from 'bun:test'
 import {
+  AVAILABLE_TOOLS,
   clampFontSize,
+  clampMemoryRetention,
   coerceSettings,
   DEFAULT_SETTINGS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   isLanguageCode,
+  isMemoryFrequency,
+  isReplyStyle,
   isSendKey,
   isThemeMode,
   LANGUAGE_CODES,
+  MAX_TOKENS_MAX,
+  MAX_TOKENS_MIN,
+  MEMORY_FREQUENCIES,
+  MEMORY_RETENTION_MAX,
+  MEMORY_RETENTION_MIN,
+  REPLY_STYLES,
   SEND_KEYS,
   settingsToDocumentAttrs,
+  TEMPERATURE_MAX,
+  TEMPERATURE_MIN,
 } from '../shared/settings'
 
 describe('DEFAULT_SETTINGS', () => {
@@ -100,6 +112,94 @@ describe('coerceSettings', () => {
   test('unknown keys are ignored', () => {
     const out = coerceSettings({ bogus: 'x' } as Record<string, unknown>)
     expect('bogus' in out).toBe(false)
+  })
+})
+
+describe('N22 schema defaults', () => {
+  test('agent/assistant/memory/model defaults match spec', () => {
+    expect(DEFAULT_SETTINGS.temperature).toBeGreaterThanOrEqual(TEMPERATURE_MIN)
+    expect(DEFAULT_SETTINGS.temperature).toBeLessThanOrEqual(TEMPERATURE_MAX)
+    expect(DEFAULT_SETTINGS.maxTokens).toBeGreaterThanOrEqual(MAX_TOKENS_MIN)
+    expect(DEFAULT_SETTINGS.maxTokens).toBeLessThanOrEqual(MAX_TOKENS_MAX)
+    expect(typeof DEFAULT_SETTINGS.systemPrompt).toBe('string')
+    expect(DEFAULT_SETTINGS.enabledTools).toEqual([...AVAILABLE_TOOLS])
+    expect(DEFAULT_SETTINGS.assistantName.length).toBeGreaterThan(0)
+    expect(DEFAULT_SETTINGS.assistantAvatar.length).toBeGreaterThan(0)
+    expect(DEFAULT_SETTINGS.assistantGreeting.length).toBeGreaterThan(0)
+    expect(REPLY_STYLES).toContain(DEFAULT_SETTINGS.replyStyle)
+    expect(DEFAULT_SETTINGS.memoryEnabled).toBe(true)
+    expect(MEMORY_FREQUENCIES).toContain(DEFAULT_SETTINGS.memoryFrequency)
+    expect(DEFAULT_SETTINGS.memoryRetentionDays).toBe(30)
+    expect(DEFAULT_SETTINGS.customEndpoint).toBe('')
+  })
+})
+
+describe('N22 type guards', () => {
+  test('isReplyStyle', () => {
+    for (const s of REPLY_STYLES) expect(isReplyStyle(s)).toBe(true)
+    expect(isReplyStyle('sarcastic')).toBe(false)
+    expect(isReplyStyle(1)).toBe(false)
+  })
+  test('isMemoryFrequency', () => {
+    for (const f of MEMORY_FREQUENCIES) expect(isMemoryFrequency(f)).toBe(true)
+    expect(isMemoryFrequency('hourly')).toBe(false)
+    expect(isMemoryFrequency(null)).toBe(false)
+  })
+})
+
+describe('clampMemoryRetention', () => {
+  test('clamps to bounds', () => {
+    expect(clampMemoryRetention(0)).toBe(MEMORY_RETENTION_MIN)
+    expect(clampMemoryRetention(99999)).toBe(MEMORY_RETENTION_MAX)
+  })
+  test('falls back to default for non-finite', () => {
+    expect(clampMemoryRetention('abc')).toBe(
+      DEFAULT_SETTINGS.memoryRetentionDays,
+    )
+  })
+})
+
+describe('coerceSettings — N22 fields', () => {
+  test('valid N22 overrides are kept', () => {
+    const out = coerceSettings({
+      systemPrompt: 'be concise',
+      temperature: 0.5,
+      maxTokens: 4096,
+      enabledTools: ['file_read', 'bash'],
+      assistantName: 'Ada',
+      assistantAvatar: '🦊',
+      assistantGreeting: 'hi',
+      replyStyle: 'friendly',
+      memoryEnabled: false,
+      memoryFrequency: 'always',
+      memoryRetentionDays: 90,
+      customEndpoint: 'https://example.com/v1',
+    })
+    expect(out.systemPrompt).toBe('be concise')
+    expect(out.temperature).toBe(0.5)
+    expect(out.maxTokens).toBe(4096)
+    expect(out.enabledTools).toEqual(['file_read', 'bash'])
+    expect(out.assistantName).toBe('Ada')
+    expect(out.assistantAvatar).toBe('🦊')
+    expect(out.replyStyle).toBe('friendly')
+    expect(out.memoryEnabled).toBe(false)
+    expect(out.memoryFrequency).toBe('always')
+    expect(out.memoryRetentionDays).toBe(90)
+    expect(out.customEndpoint).toBe('https://example.com/v1')
+  })
+  test('invalid N22 values fall back to defaults / clamps', () => {
+    const out = coerceSettings({
+      temperature: 5,
+      maxTokens: 1,
+      replyStyle: 'rude',
+      memoryFrequency: 'never',
+      enabledTools: ['bogus_tool', 'bash'],
+    })
+    expect(out.temperature).toBe(TEMPERATURE_MAX)
+    expect(out.maxTokens).toBe(MAX_TOKENS_MIN)
+    expect(out.replyStyle).toBe(DEFAULT_SETTINGS.replyStyle)
+    expect(out.memoryFrequency).toBe(DEFAULT_SETTINGS.memoryFrequency)
+    expect(out.enabledTools).toEqual(['bash'])
   })
 })
 
