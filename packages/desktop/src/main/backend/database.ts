@@ -190,6 +190,35 @@ export class Database {
     return changed
   }
 
+  // ── Bulk export / restore (N23 data management) ──
+  /** Snapshot every table for export/backup. */
+  exportData(): {
+    automations: AutomationInfo[]
+    automationRuns: AutomationRun[]
+    projects: ProjectInfo[]
+  } {
+    return {
+      automations: [...this.data.automations],
+      automationRuns: [...this.data.automationRuns],
+      projects: [...this.data.projects],
+    }
+  }
+
+  /** Replace every table at once (lossless restore). */
+  replaceData(data: {
+    automations?: AutomationInfo[]
+    automationRuns?: AutomationRun[]
+    projects?: ProjectInfo[]
+  }): void {
+    this.data = {
+      version: this.data.version,
+      automations: data.automations ?? [],
+      automationRuns: data.automationRuns ?? [],
+      projects: data.projects ?? [],
+    }
+    this.persist()
+  }
+
   // ── Maintenance (tests) ──
   reset(): void {
     this.data = structuredClone(EMPTY_SCHEMA)

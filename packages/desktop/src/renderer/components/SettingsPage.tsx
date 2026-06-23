@@ -54,6 +54,7 @@ import type { MessageKey } from '../i18n';
 import { useI18n } from '../hooks/useI18n';
 import { useMemory } from '../hooks/useMemory';
 import { useSettings } from '../hooks/useSettings';
+import { DataManagementPage } from './DataManagementPage';
 
 // ─── Navigation model (exported for tests) ────────────────────
 export type SettingsNavId =
@@ -983,6 +984,8 @@ export function SettingsPage() {
           <MemorySettingsTab />
         ) : activeId === 'model' ? (
           <ModelSettingsTab />
+        ) : activeId === 'data' ? (
+          <DataManagementPage />
         ) : (
           <PlaceholderTab title={t(SETTINGS_NAV_ITEMS.find(i => i.id === activeId)?.labelKey ?? 'nav.system')} />
         )}

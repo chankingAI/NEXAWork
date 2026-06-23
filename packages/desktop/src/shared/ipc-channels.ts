@@ -77,6 +77,17 @@ export const IPC_CHANNELS = {
   MEMORY_CLEAR: 'memory:clear',
   MEMORY_CHANGED: 'memory:changed', // push: main → renderer
 
+  // Data management (N23)
+  DATA_STATS: 'data:stats',
+  DATA_EXPORT: 'data:export',
+  DATA_IMPORT: 'data:import',
+  DATA_CLEAR_SESSIONS: 'data:clearSessions',
+  DATA_CLEAR_CACHE: 'data:clearCache',
+  DATA_RESET_SETTINGS: 'data:resetSettings',
+  DATA_BACKUP: 'data:backup',
+  DATA_RESTORE: 'data:restore',
+  DATA_CHANGED: 'data:changed', // push: main → renderer
+
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
@@ -348,6 +359,55 @@ export interface IPCRequestMap {
     output: Record<string, never>
   }
 
+  // Data management (N23)
+  [IPC_CHANNELS.DATA_STATS]: {
+    input: Record<string, never>
+    output: DataStats
+  }
+  [IPC_CHANNELS.DATA_EXPORT]: {
+    input: {
+      scope: ExportScope
+      format: ExportFormat
+      startDate?: string
+      endDate?: string
+      sessionIds?: string[]
+    }
+    output: {
+      content: string
+      format: ExportFormat
+      filename: string
+      byteLength: number
+    }
+  }
+  [IPC_CHANNELS.DATA_IMPORT]: {
+    input: { content: string; strategy?: ConflictStrategy }
+    output: { stats: ImportStats }
+  }
+  [IPC_CHANNELS.DATA_CLEAR_SESSIONS]: {
+    input: Record<string, never>
+    output: { success: boolean; cleared: number }
+  }
+  [IPC_CHANNELS.DATA_CLEAR_CACHE]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.DATA_RESET_SETTINGS]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.DATA_BACKUP]: {
+    input: Record<string, never>
+    output: { content: string; filename: string; byteLength: number }
+  }
+  [IPC_CHANNELS.DATA_RESTORE]: {
+    input: { content: string }
+    output: { success: boolean; stats: DataStats }
+  }
+  [IPC_CHANNELS.DATA_CHANGED]: {
+    input: Record<string, never>
+    output: Record<string, never>
+  }
+
   // Window
   [IPC_CHANNELS.WINDOW_MINIMIZE]: {
     input: Record<string, never>
@@ -592,6 +652,36 @@ export interface ProjectTemplate {
   color: string
   /** Default prompts/checklist seeded into the project. */
   presets: string[]
+}
+
+// --- Data management (N23) ---
+
+/** Export scope offered in the data-management tab. */
+export type ExportScope = 'all' | 'dateRange' | 'sessions'
+/** Serialization formats offered in the export UI. */
+export type ExportFormat = 'json' | 'markdown'
+/** How id collisions are resolved on import. */
+export type ConflictStrategy = 'skip' | 'overwrite'
+
+/** Aggregate counts + on-disk footprint shown in the statistics cards. */
+export interface DataStats {
+  sessionCount: number
+  messageCount: number
+  skillCount: number
+  automationCount: number
+  projectCount: number
+  memoryCount: number
+  /** Approximate footprint: byte length of the full serialized bundle. */
+  diskUsageBytes: number
+}
+
+/** Per-collection result counts from an import. */
+export interface ImportStats {
+  importedSessions: number
+  importedMessages: number
+  importedSkills: number
+  skippedSessions: number
+  skippedSkills: number
 }
 
 // --- Stream Events ---

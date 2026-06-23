@@ -27,6 +27,7 @@ import {
   executeStreamQuery,
   cancelQuery,
   getHistory,
+  getActiveSessionIds,
   updateEngineConfig,
   removeSessionEngine,
 } from './backend/engine'
@@ -35,8 +36,19 @@ import { Scheduler, type AutomationExecutor } from './backend/scheduler'
 import { initSettingsStore, type SettingsStore } from './backend/settings-store'
 import { initMemoryStore, type MemoryStore } from './backend/memory-store'
 import { initSecureStore, type SecureStore } from './backend/secure-store'
-import { DEFAULT_SETTINGS } from '../shared/settings'
+import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
+import {
+  type DataSnapshot,
+  type ExportFormat,
+  type ExportScope,
+  type ConflictStrategy,
+  buildExportBundle,
+  computeStats,
+  parseImport,
+  planSessionImport,
+  serializeBundle,
+} from './backend/data-manager'
 
 /**
  * NexaWork IPC Handler Registry
@@ -107,6 +119,47 @@ function broadcastMemoryChanged(): void {
       win.webContents.send(IPC_CHANNELS.MEMORY_CHANGED)
     }
   }
+}
+
+/** Push a live "data changed" event to every renderer window (N23). */
+function broadcastDataChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.DATA_CHANGED)
+    }
+  }
+}
+
+/** Assemble a live snapshot of every persisted collection (N23). */
+function buildSnapshot(): DataSnapshot {
+  const messagesBySession: Record<string, ChatMessage[]> = {}
+  for (const [sessionId, list] of messages.entries()) {
+    if (list.length > 0) messagesBySession[sessionId] = list
+  }
+  // The engine holds the real conversation history; prefer it when present.
+  for (const sessionId of getActiveSessionIds()) {
+    const history = getHistory(sessionId, { limit: Number.MAX_SAFE_INTEGER })
+    if (history.messages.length > 0) {
+      messagesBySession[sessionId] = history.messages
+    }
+  }
+  const dbData = db.exportData()
+  return {
+    sessions: Array.from(sessions.values()),
+    messagesBySession,
+    skills: Array.from(skills.values()),
+    automations: dbData.automations,
+    automationRuns: dbData.automationRuns,
+    projects: dbData.projects,
+    memory: memoryStore.list(),
+    settings: coerceSettings(settings.all()),
+  }
+}
+
+/** Timestamped filename for an export/backup download. */
+function exportFilename(prefix: string, ext: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  return `${prefix}-${stamp}.${ext}`
 }
 
 /** Resolve the on-disk path for a userData JSON file, or null in tests. */
@@ -786,6 +839,129 @@ export function registerIPCHandlers(): void {
     broadcastMemoryChanged()
     return { success: true }
   })
+
+  // === Data management (N23) ===
+  ipcMain.handle(IPC_CHANNELS.DATA_STATS, async () => {
+    return computeStats(buildSnapshot())
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.DATA_EXPORT,
+    async (
+      _event,
+      input: {
+        scope: ExportScope
+        format: ExportFormat
+        startDate?: string
+        endDate?: string
+        sessionIds?: string[]
+      },
+    ) => {
+      const bundle = buildExportBundle(buildSnapshot(), {
+        scope: input.scope,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        sessionIds: input.sessionIds,
+      })
+      const content = serializeBundle(bundle, input.format)
+      const ext = input.format === 'markdown' ? 'md' : 'json'
+      return {
+        content,
+        format: input.format,
+        filename: exportFilename('nexawork-export', ext),
+        byteLength: Buffer.byteLength(content, 'utf-8'),
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.DATA_IMPORT,
+    async (_event, input: { content: string; strategy?: ConflictStrategy }) => {
+      if (!input?.content)
+        throw createError('INVALID_INPUT', 'content is required')
+      const bundle = parseImport(input.content)
+      const plan = planSessionImport(buildSnapshot(), bundle, input.strategy)
+      sessions.clear()
+      for (const session of plan.sessions) sessions.set(session.id, session)
+      messages.clear()
+      for (const [id, list] of Object.entries(plan.messagesBySession)) {
+        messages.set(id, list)
+      }
+      skills.clear()
+      for (const skill of plan.skills) skills.set(skill.id, skill)
+      broadcastDataChanged()
+      return { stats: plan.stats }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.DATA_CLEAR_SESSIONS, async () => {
+    const cleared = sessions.size
+    sessions.clear()
+    messages.clear()
+    broadcastDataChanged()
+    return { success: true, cleared }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DATA_CLEAR_CACHE, async () => {
+    const data = db.exportData()
+    db.replaceData({
+      automations: data.automations,
+      automationRuns: [],
+      projects: data.projects,
+    })
+    broadcastDataChanged()
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DATA_RESET_SETTINGS, async () => {
+    settings.reset()
+    broadcastSettingsChanged()
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP, async () => {
+    const bundle = buildExportBundle(buildSnapshot(), { scope: 'all' })
+    const content = serializeBundle(bundle, 'json')
+    return {
+      content,
+      filename: exportFilename('nexawork-backup', 'json'),
+      byteLength: Buffer.byteLength(content, 'utf-8'),
+    }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.DATA_RESTORE,
+    async (_event, input: { content: string }) => {
+      if (!input?.content)
+        throw createError('INVALID_INPUT', 'content is required')
+      const bundle = parseImport(input.content)
+
+      sessions.clear()
+      for (const session of bundle.sessions) sessions.set(session.id, session)
+      messages.clear()
+      for (const [id, list] of Object.entries(bundle.messagesBySession)) {
+        messages.set(id, list)
+      }
+      skills.clear()
+      for (const skill of bundle.skills) skills.set(skill.id, skill)
+
+      db.replaceData({
+        automations: bundle.automations,
+        automationRuns: bundle.automationRuns,
+        projects: bundle.projects,
+      })
+      memoryStore.replaceAll(bundle.memory)
+      if (bundle.settings) {
+        settings.setMany(bundle.settings as unknown as Record<string, unknown>)
+        broadcastSettingsChanged()
+      }
+
+      broadcastDataChanged()
+      broadcastMemoryChanged()
+      broadcastAutomationChanged()
+      return { success: true, stats: computeStats(buildSnapshot()) }
+    },
+  )
 
   // === Experts ===
   ipcMain.handle(
