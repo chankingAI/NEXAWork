@@ -135,20 +135,28 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('data:backup')
     expect(registeredChannels).toContain('data:restore')
 
+    // Recording (6: N24; RECORD_CHANGED is push-only)
+    expect(registeredChannels).toContain('record:start')
+    expect(registeredChannels).toContain('record:pause')
+    expect(registeredChannels).toContain('record:resume')
+    expect(registeredChannels).toContain('record:stop')
+    expect(registeredChannels).toContain('record:status')
+    expect(registeredChannels).toContain('record:discard')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 68 channels registered', async () => {
+  test('total handler count: 74 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
-    // + 8 data (N23) + 4 window + 2 app = 68
-    expect(mockHandlers.size).toBe(68)
+    // + 8 data (N23) + 6 record (N24) + 4 window + 2 app = 74
+    expect(mockHandlers.size).toBe(74)
   })
 })
 
@@ -967,5 +975,66 @@ describe('Handler Logic: Data management (N23)', () => {
   test('data:restore rejects invalid content', async () => {
     const handler = mockHandlers.get('data:restore')!
     await expect(handler({}, { content: '{bad' })).rejects.toBeDefined()
+  })
+})
+
+describe('Handler Logic: Recording (N24)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+    // Ensure a clean recorder state across tests (stop if a prior test left one).
+    const status = mockHandlers.get('record:status')!
+    const current = await status({})
+    if (current.state !== 'idle') await mockHandlers.get('record:stop')!({})
+  })
+
+  test('record:start transitions idle -> recording and reports a session id', async () => {
+    const start = mockHandlers.get('record:start')!
+    const result = await start({}, { taskDescription: 'demo' })
+    expect(result.state).toBe('recording')
+    expect(result.sessionId).toBeTruthy()
+    expect(result.eventCount).toBe(0)
+    await mockHandlers.get('record:stop')!({})
+  })
+
+  test('record:status reflects the live recorder state', async () => {
+    const start = mockHandlers.get('record:start')!
+    await start({}, {})
+    const status = mockHandlers.get('record:status')!
+    const snapshot = await status({})
+    expect(snapshot.state).toBe('recording')
+    await mockHandlers.get('record:stop')!({})
+  })
+
+  test('record:pause then record:resume toggle the recorder state', async () => {
+    await mockHandlers.get('record:start')!({}, {})
+    const paused = await mockHandlers.get('record:pause')!({})
+    expect(paused.state).toBe('paused')
+    const resumed = await mockHandlers.get('record:resume')!({})
+    expect(resumed.state).toBe('recording')
+    await mockHandlers.get('record:stop')!({})
+  })
+
+  test('record:stop returns a result with id/duration/eventCount and resets to idle', async () => {
+    await mockHandlers.get('record:start')!({}, {})
+    const result = await mockHandlers.get('record:stop')!({})
+    expect(result.id).toBeTruthy()
+    expect(typeof result.durationMs).toBe('number')
+    expect(typeof result.eventCount).toBe('number')
+    const snapshot = await mockHandlers.get('record:status')!({})
+    expect(snapshot.state).toBe('idle')
+  })
+
+  test('record:discard requires an id', async () => {
+    const discard = mockHandlers.get('record:discard')!
+    await expect(discard({}, {})).rejects.toBeDefined()
+  })
+
+  test('record:discard reports success for an unknown id', async () => {
+    const discard = mockHandlers.get('record:discard')!
+    const result = await discard({}, { id: 'rec_missing' })
+    expect(typeof result.success).toBe('boolean')
   })
 })

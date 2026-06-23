@@ -14,6 +14,10 @@ import { PermissionConfirmDialog } from './components/PermissionConfirmDialog';
 import { PermissionLogView } from './components/PermissionLogView';
 import { defaultSkills, type MarketSkill } from './components/SkillSearchPanel';
 import { usePermission } from './hooks/usePermission';
+import { useRecorder } from './hooks/useRecorder';
+import { RecordButton } from './components/RecordButton';
+import { RecordingStatusBar } from './components/RecordingStatusBar';
+import { RecordingCompletionDialog } from './components/RecordingCompletionDialog';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -26,6 +30,20 @@ export function App() {
   // reading mode) so they take effect app-wide regardless of the active view.
   useSettings();
   const permission = usePermission();
+  const recorder = useRecorder();
+
+  const handleStartRecording = useCallback(() => {
+    void recorder.start();
+  }, [recorder.start]);
+
+  const handleStopRecording = useCallback(() => {
+    void recorder.stop();
+  }, [recorder.stop]);
+
+  const handleDiscardRecording = useCallback(() => {
+    if (recorder.lastResult) void recorder.discard(recorder.lastResult.id);
+    else recorder.clearResult();
+  }, [recorder.lastResult, recorder.discard, recorder.clearResult]);
 
   const handleNewSession = useCallback(() => {
     const id = `session-${Date.now()}`;
@@ -109,7 +127,19 @@ export function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--color-bg-primary)]">
       {/* Title Bar */}
-      <TitleBar />
+      <TitleBar
+        recordSlot={
+          <>
+            <RecordingStatusBar
+              status={recorder.status}
+              onPause={recorder.pause}
+              onResume={recorder.resume}
+              onStop={handleStopRecording}
+            />
+            <RecordButton status={recorder.status} onStart={handleStartRecording} onStop={handleStopRecording} />
+          </>
+        }
+      />
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
@@ -178,6 +208,16 @@ export function App() {
       {/* Global tool permission prompt */}
       {permission.activeRequest && (
         <PermissionConfirmDialog request={permission.activeRequest} onRespond={permission.respond} />
+      )}
+
+      {/* Recording completion dialog (N24) */}
+      {recorder.lastResult && (
+        <RecordingCompletionDialog
+          result={recorder.lastResult}
+          onGenerateSkill={recorder.clearResult}
+          onSaveRecording={recorder.clearResult}
+          onDiscard={handleDiscardRecording}
+        />
       )}
     </div>
   );

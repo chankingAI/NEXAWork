@@ -1,6 +1,11 @@
 import { Minus, Square, X } from 'lucide-react';
 
-export function TitleBar() {
+export interface TitleBarProps {
+  /** Recording entry/status controls rendered on the right (N24). */
+  recordSlot?: React.ReactNode;
+}
+
+export function TitleBar({ recordSlot }: TitleBarProps) {
   const platform =
     typeof navigator !== 'undefined' ? (navigator.userAgent.includes('Mac') ? 'darwin' : 'win32') : 'win32';
 
@@ -17,6 +22,9 @@ export function TitleBar() {
       <div className="flex flex-1 items-center justify-center">
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">NexaWork</span>
       </div>
+
+      {/* Recording controls (N24) */}
+      {recordSlot && <div className="mr-2 flex items-center gap-2">{recordSlot}</div>}
 
       {/* Windows controls */}
       {platform !== 'darwin' && (
