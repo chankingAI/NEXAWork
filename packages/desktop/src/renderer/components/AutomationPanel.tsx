@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import type { AutomationInfo, AutomationCreateInput } from '../../shared/ipc-channels';
 import { describeCron, formatCountdown, formatValidRange } from '../../shared/cron';
+import { AddAutomationDialog, emptyAddForm, templateToAddForm, type AddAutomationForm } from './AddAutomationDialog';
 
 // ─── Pure helpers (testable) ──────────────────────────────────
 
@@ -90,49 +91,6 @@ export const automationTemplates: AutomationTemplate[] = [
     workspace: '市场营销',
   },
 ];
-
-export interface AutomationForm {
-  name: string;
-  prompt: string;
-  cron: string;
-  workspace: string;
-  startDate: string;
-  endDate: string;
-}
-
-export const emptyForm: AutomationForm = {
-  name: '',
-  prompt: '',
-  cron: '0 8 * * *',
-  workspace: '',
-  startDate: '',
-  endDate: '',
-};
-
-/** Returns a list of validation error messages (empty = valid). */
-export function validateAutomationForm(form: AutomationForm): string[] {
-  const errors: string[] = [];
-  if (!form.name.trim()) errors.push('请填写任务名称');
-  if (!form.prompt.trim()) errors.push('请填写任务指令');
-  if (form.cron.trim().split(/\s+/).length !== 5) errors.push('Cron 表达式需为 5 段');
-  if (!form.workspace.trim()) errors.push('请选择关联空间');
-  return errors;
-}
-
-export function isFormValid(form: AutomationForm): boolean {
-  return validateAutomationForm(form).length === 0;
-}
-
-export function toCreateInput(form: AutomationForm): AutomationCreateInput {
-  return {
-    name: form.name.trim(),
-    prompt: form.prompt.trim(),
-    cron: form.cron.trim(),
-    workspace: form.workspace.trim(),
-    startDate: form.startDate || undefined,
-    endDate: form.endDate || undefined,
-  };
-}
 
 function formatLastRun(iso?: string): string {
   if (!iso) return '尚未执行';
@@ -285,127 +243,6 @@ function CompletedItem({ automation, onDelete }: { automation: AutomationInfo; o
   );
 }
 
-// ─── Create / Template modal ──────────────────────────────────
-function CreateModal({
-  initial,
-  onCancel,
-  onSubmit,
-}: {
-  initial: AutomationForm;
-  onCancel: () => void;
-  onSubmit: (input: AutomationCreateInput) => void;
-}) {
-  const [form, setForm] = useState<AutomationForm>(initial);
-  const errors = validateAutomationForm(form);
-  const valid = errors.length === 0;
-
-  const field = (key: keyof AutomationForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm(prev => ({ ...prev, [key]: e.target.value }));
-
-  return (
-    <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/30 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="添加自动化"
-    >
-      <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-bg-primary)] shadow-[var(--shadow-lg)]">
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-          <span className="text-sm font-semibold text-[var(--color-text-primary)]">添加自动化</span>
-          <button
-            onClick={onCancel}
-            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-hover)]"
-            aria-label="关闭"
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-3 px-4 py-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-[var(--color-text-secondary)]">任务名称</span>
-            <input
-              value={form.name}
-              onChange={field('name')}
-              placeholder="例如：每日销售报表"
-              className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-[var(--color-text-secondary)]">任务指令</span>
-            <textarea
-              value={form.prompt}
-              onChange={field('prompt')}
-              placeholder="描述要自动执行的任务"
-              rows={2}
-              className="resize-none rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-            />
-          </label>
-          <div className="flex gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">频率 (Cron)</span>
-              <input
-                value={form.cron}
-                onChange={field('cron')}
-                placeholder="0 8 * * *"
-                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 font-mono text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-              />
-            </label>
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">关联空间</span>
-              <input
-                value={form.workspace}
-                onChange={field('workspace')}
-                placeholder="产品开发"
-                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-              />
-            </label>
-          </div>
-          {form.cron.trim().split(/\s+/).length === 5 && (
-            <span className="text-[11px] text-[var(--color-text-tertiary)]">预览：{describeCron(form.cron)}</span>
-          )}
-          <div className="flex gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">生效日期</span>
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={field('startDate')}
-                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-              />
-            </label>
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">结束日期</span>
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={field('endDate')}
-                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-text-primary)]"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--color-border)] px-4 py-3">
-          <button
-            onClick={onCancel}
-            className="h-9 rounded-[var(--radius-md)] px-4 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
-          >
-            取消
-          </button>
-          <button
-            disabled={!valid}
-            onClick={() => onSubmit(toCreateInput(form))}
-            className="h-9 rounded-[var(--radius-md)] bg-[var(--color-text-primary)] px-4 text-sm font-medium text-[var(--color-bg-primary)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            创建
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Template picker ──────────────────────────────────────────
 function TemplatePicker({ onCancel, onPick }: { onCancel: () => void; onPick: (tpl: AutomationTemplate) => void }) {
   return (
@@ -456,22 +293,21 @@ function TemplatePicker({ onCancel, onPick }: { onCancel: () => void; onPick: (t
 // ─── Main component ───────────────────────────────────────────
 export function AutomationPanel({ automations, now, onCreate, onToggle, onDelete, onRunNow }: AutomationPanelProps) {
   const [modal, setModal] = useState<'none' | 'create' | 'template'>('none');
-  const [initialForm, setInitialForm] = useState<AutomationForm>(emptyForm);
+  const [initialForm, setInitialForm] = useState<AddAutomationForm>(emptyAddForm);
   const { scheduled, completed } = useMemo(() => splitAutomations(automations), [automations]);
 
+  const workspaces = useMemo(
+    () => Array.from(new Set(automations.map(a => a.workspace).filter(Boolean))),
+    [automations],
+  );
+
   const openCreate = () => {
-    setInitialForm(emptyForm);
+    setInitialForm(emptyAddForm);
     setModal('create');
   };
 
   const pickTemplate = (tpl: AutomationTemplate) => {
-    setInitialForm({
-      ...emptyForm,
-      name: tpl.name,
-      prompt: tpl.prompt,
-      cron: tpl.cron,
-      workspace: tpl.workspace,
-    });
+    setInitialForm(templateToAddForm(tpl));
     setModal('create');
   };
 
@@ -553,7 +389,14 @@ export function AutomationPanel({ automations, now, onCreate, onToggle, onDelete
         </section>
       </div>
 
-      {modal === 'create' && <CreateModal initial={initialForm} onCancel={() => setModal('none')} onSubmit={submit} />}
+      {modal === 'create' && (
+        <AddAutomationDialog
+          initial={initialForm}
+          workspaces={workspaces}
+          onCancel={() => setModal('none')}
+          onSubmit={submit}
+        />
+      )}
       {modal === 'template' && <TemplatePicker onCancel={() => setModal('none')} onPick={pickTemplate} />}
     </div>
   );

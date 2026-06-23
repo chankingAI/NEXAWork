@@ -434,6 +434,12 @@ export interface AutomationInfo {
   validTo?: string
   /** Result of the most recent run, used for the completed-list tag. */
   lastRunStatus?: 'success' | 'failure'
+  /** Execution context configured in the add-automation form (N19). */
+  connector?: string
+  model?: string
+  skill?: string
+  expert?: string
+  permissionMode?: DesktopPermissionMode
 }
 
 export interface AutomationCreateInput {
@@ -443,6 +449,12 @@ export interface AutomationCreateInput {
   workspace: string
   startDate?: string
   endDate?: string
+  /** Execution context configured in the add-automation form (N19). */
+  connector?: string
+  model?: string
+  skill?: string
+  expert?: string
+  permissionMode?: DesktopPermissionMode
 }
 
 export interface AutomationRun {

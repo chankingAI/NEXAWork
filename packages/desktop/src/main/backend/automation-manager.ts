@@ -65,6 +65,11 @@ export class AutomationManager {
         next?.toISOString() ?? new Date(Date.now() + ONE_HOUR_MS).toISOString(),
       validFrom: input.startDate,
       validTo: input.endDate,
+      connector: input.connector,
+      model: input.model,
+      skill: input.skill,
+      expert: input.expert,
+      permissionMode: input.permissionMode,
     }
     this.automations.set(id, automation)
     this.runs.set(id, [])
