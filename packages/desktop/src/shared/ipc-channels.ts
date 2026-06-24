@@ -19,6 +19,7 @@ import type {
   SecurityConfig,
   SecurityConfigPatch,
 } from './security-center'
+import type { UpdateState } from './auto-updater'
 import type {
   RecordingAnalysis,
   RecordedSkill,
@@ -88,6 +89,14 @@ export type {
   AuditDecision,
   AuditFilter,
 } from './security-center'
+
+export type {
+  UpdateState,
+  UpdateStatus,
+  UpdateEvent,
+  DownloadProgress,
+  SemVer,
+} from './auto-updater'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -286,6 +295,13 @@ export const IPC_CHANNELS = {
   PERMISSION_RESPOND: 'permission:respond',
   PERMISSION_LOG_LIST: 'permission:log:list',
   PERMISSION_LOG_CLEAR: 'permission:log:clear',
+
+  // Auto-update (N36)
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_STATE: 'update:getState',
+  UPDATE_CHANGED: 'update:changed', // push: main → renderer (state/progress)
 
   // App
   APP_VERSION: 'app:version',
@@ -1053,6 +1069,28 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.PERMISSION_LOG_CLEAR]: {
     input: Record<string, never>
     output: { success: boolean }
+  }
+
+  // Auto-update (N36)
+  [IPC_CHANNELS.UPDATE_CHECK]: {
+    input: Record<string, never>
+    output: UpdateState
+  }
+  [IPC_CHANNELS.UPDATE_DOWNLOAD]: {
+    input: Record<string, never>
+    output: UpdateState
+  }
+  [IPC_CHANNELS.UPDATE_INSTALL]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.UPDATE_GET_STATE]: {
+    input: Record<string, never>
+    output: UpdateState
+  }
+  [IPC_CHANNELS.UPDATE_CHANGED]: {
+    input: Record<string, never>
+    output: UpdateState
   }
 
   // App

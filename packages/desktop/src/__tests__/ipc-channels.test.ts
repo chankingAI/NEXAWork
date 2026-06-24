@@ -91,6 +91,14 @@ describe('IPC_CHANNELS', () => {
     expect(IPC_CHANNELS.APP_PLATFORM).toBe('app:platform')
   })
 
+  test('auto-update channels follow naming convention (N36)', () => {
+    expect(IPC_CHANNELS.UPDATE_CHECK).toBe('update:check')
+    expect(IPC_CHANNELS.UPDATE_DOWNLOAD).toBe('update:download')
+    expect(IPC_CHANNELS.UPDATE_INSTALL).toBe('update:install')
+    expect(IPC_CHANNELS.UPDATE_GET_STATE).toBe('update:getState')
+    expect(IPC_CHANNELS.UPDATE_CHANGED).toBe('update:changed')
+  })
+
   test('all channels use domain:action pattern', () => {
     const values = Object.values(IPC_CHANNELS)
     for (const channel of values) {

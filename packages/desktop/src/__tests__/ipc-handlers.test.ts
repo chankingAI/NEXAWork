@@ -248,6 +248,12 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('security:audit:clear')
     expect(registeredChannels).toContain('security:audit:export')
 
+    // Auto-update (4: N36; update:changed is push-only)
+    expect(registeredChannels).toContain('update:getState')
+    expect(registeredChannels).toContain('update:check')
+    expect(registeredChannels).toContain('update:download')
+    expect(registeredChannels).toContain('update:install')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
@@ -270,8 +276,10 @@ describe('IPC Handler Registration', () => {
     //   checkout/merge/diff/diffHunks; git:changed is push-only)
     // + 5 security (N32: getConfig/updateConfig/audit:list/audit:clear/
     //   audit:export; security:changed is push-only)
-    // + 4 window + 2 app = 141
-    expect(mockHandlers.size).toBe(141)
+    // + 4 update (N36: getState/check/download/install; update:changed is
+    //   push-only)
+    // + 4 window + 2 app = 145
+    expect(mockHandlers.size).toBe(145)
   })
 })
 
@@ -1961,5 +1969,102 @@ describe('Handler Logic: Security center (N32)', () => {
     expect(
       (await mockHandlers.get('security:audit:list')!({})).entries.length,
     ).toBe(0)
+  })
+})
+
+describe('Handler Logic: Auto-update (N36)', () => {
+  // A minimal electron-updater stand-in driven directly by the tests.
+  type Listener = (...args: unknown[]) => void
+  class FakeUpdater {
+    autoDownload = true
+    autoInstallOnAppQuit = false
+    quitCalls = 0
+    private readonly listeners = new Map<string, Listener[]>()
+    on(event: string, listener: Listener): void {
+      const list = this.listeners.get(event) ?? []
+      list.push(listener)
+      this.listeners.set(event, list)
+    }
+    async checkForUpdates(): Promise<unknown> {
+      return {}
+    }
+    async downloadUpdate(): Promise<unknown> {
+      return {}
+    }
+    quitAndInstall(): void {
+      this.quitCalls++
+    }
+    emit(event: string, arg?: unknown): void {
+      for (const l of this.listeners.get(event) ?? []) l(arg)
+    }
+  }
+
+  let fake: FakeUpdater
+
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setFileWatchForTests(() => ({ close: () => {} }))
+    handlers.__setSecurityProbeForTests(async () => null)
+    fake = new FakeUpdater()
+    // biome-ignore lint/suspicious/noExplicitAny: structural fake updater for tests
+    handlers.__setUpdaterForTests(fake as any)
+    handlers.registerIPCHandlers()
+  })
+
+  afterEach(async () => {
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setUpdaterForTests(null)
+  })
+
+  test('start() configures the updater and reports an enabled state', async () => {
+    expect(fake.autoDownload).toBe(false)
+    expect(fake.autoInstallOnAppQuit).toBe(true)
+    const state = await mockHandlers.get('update:getState')!({})
+    expect(state.enabled).toBe(true)
+    expect(state.currentVersion).toBe('0.1.0')
+  })
+
+  test('update:check moves the state to checking', async () => {
+    const state = await mockHandlers.get('update:check')!({})
+    expect(state.status).toBe('checking')
+  })
+
+  test('an available update is surfaced via getState', async () => {
+    await mockHandlers.get('update:check')!({})
+    fake.emit('update-available', {
+      version: '9.9.9',
+      releaseNotes: 'Shiny',
+    })
+    const state = await mockHandlers.get('update:getState')!({})
+    expect(state.status).toBe('available')
+    expect(state.availableVersion).toBe('9.9.9')
+    expect(state.releaseNotes).toBe('Shiny')
+  })
+
+  test('update:download begins downloading once an update is known', async () => {
+    fake.emit('update-available', { version: '9.9.9' })
+    const state = await mockHandlers.get('update:download')!({})
+    expect(state.status).toBe('downloading')
+    expect(state.progress?.percent).toBe(0)
+  })
+
+  test('update:install only succeeds after the download completes', async () => {
+    fake.emit('update-available', { version: '9.9.9' })
+    expect((await mockHandlers.get('update:install')!({})).success).toBe(false)
+    fake.emit('update-downloaded', { version: '9.9.9' })
+    const res = await mockHandlers.get('update:install')!({})
+    expect(res.success).toBe(true)
+    expect(fake.quitCalls).toBe(1)
+  })
+
+  test('a download error rolls back to available without affecting the version', async () => {
+    fake.emit('update-available', { version: '9.9.9' })
+    fake.emit('error', new Error('feed unreachable'))
+    const state = await mockHandlers.get('update:getState')!({})
+    expect(state.status).toBe('available')
+    expect(state.error).toBe('feed unreachable')
+    expect(state.currentVersion).toBe('0.1.0')
   })
 })

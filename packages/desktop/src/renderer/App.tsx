@@ -25,6 +25,8 @@ import { EditorPage } from './components/EditorPage';
 import { TerminalPanel } from './components/TerminalPanel';
 import { GitPanel } from './components/GitPanel';
 import { SecurityCenterPage } from './components/SecurityCenterPage';
+import { UpdateDialog } from './components/UpdateDialog';
+import { useAutoUpdate } from './hooks/useAutoUpdate';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export function App() {
   useSettings();
   const permission = usePermission();
   const recorder = useRecorder();
+  const update = useAutoUpdate();
   const [showRecordConfig, setShowRecordConfig] = useState(false);
   const [generateRecordingId, setGenerateRecordingId] = useState<string | null>(null);
   const [askAiDraft, setAskAiDraft] = useState<{ text: string; nonce: number } | null>(null);
@@ -261,6 +264,9 @@ export function App() {
           onDiscard={handleDiscardRecording}
         />
       )}
+
+      {/* Auto-update dialog (N36): available → download → restart-to-install */}
+      <UpdateDialog update={update} />
 
       {/* Generate-skill-from-recording dialog (N27) */}
       {generateRecordingId && (

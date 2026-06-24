@@ -492,6 +492,24 @@ const zhCN = {
   'security.experimental.deleteProtection': '删除保护',
   'security.experimental.deleteProtectionDesc':
     '删除文件时移入回收站而非直接删除',
+
+  // Auto-update (N36)
+  'update.title.available': '发现新版本',
+  'update.title.downloading': '正在下载更新',
+  'update.title.downloaded': '更新已就绪',
+  'update.title.error': '更新失败',
+  'update.available.desc': '新版本 {version} 可用，是否立即更新？',
+  'update.current': '当前版本 {version}',
+  'update.releaseNotes': '更新内容',
+  'update.downloading.status': '正在后台下载更新…',
+  'update.downloaded.desc': '新版本 {version} 已下载完成，重启后生效。',
+  'update.error.desc': '更新失败，当前版本不受影响，可稍后重试。',
+  'update.button.download': '立即更新',
+  'update.button.later': '稍后',
+  'update.button.background': '后台下载',
+  'update.button.restart': '重启更新',
+  'update.button.retry': '重试',
+  'update.button.close': '关闭',
 } as const
 
 export type MessageKey = keyof typeof zhCN
@@ -979,6 +997,26 @@ const en: Messages = {
   'security.experimental.deleteProtection': 'Delete Protection',
   'security.experimental.deleteProtectionDesc':
     'Move deleted files to the recycle bin',
+
+  // Auto-update (N36)
+  'update.title.available': 'Update Available',
+  'update.title.downloading': 'Downloading Update',
+  'update.title.downloaded': 'Update Ready',
+  'update.title.error': 'Update Failed',
+  'update.available.desc': 'Version {version} is available. Update now?',
+  'update.current': 'Current version {version}',
+  'update.releaseNotes': "What's new",
+  'update.downloading.status': 'Downloading the update in the background…',
+  'update.downloaded.desc':
+    'Version {version} has been downloaded and will apply after restart.',
+  'update.error.desc':
+    'The update failed. Your current version is unaffected—you can retry later.',
+  'update.button.download': 'Update Now',
+  'update.button.later': 'Later',
+  'update.button.background': 'Download in Background',
+  'update.button.restart': 'Restart to Update',
+  'update.button.retry': 'Retry',
+  'update.button.close': 'Close',
 }
 
 const ja: Messages = {
@@ -1471,6 +1509,27 @@ const ja: Messages = {
   'security.experimental.deleteProtection': '削除保護',
   'security.experimental.deleteProtectionDesc':
     '削除したファイルをゴミ箱へ移動',
+
+  // Auto-update (N36)
+  'update.title.available': '新しいバージョンがあります',
+  'update.title.downloading': '更新をダウンロード中',
+  'update.title.downloaded': '更新の準備ができました',
+  'update.title.error': '更新に失敗しました',
+  'update.available.desc':
+    'バージョン {version} が利用可能です。今すぐ更新しますか？',
+  'update.current': '現在のバージョン {version}',
+  'update.releaseNotes': '更新内容',
+  'update.downloading.status': 'バックグラウンドで更新をダウンロード中…',
+  'update.downloaded.desc':
+    'バージョン {version} のダウンロードが完了しました。再起動後に適用されます。',
+  'update.error.desc':
+    '更新に失敗しました。現在のバージョンには影響しません。後で再試行できます。',
+  'update.button.download': '今すぐ更新',
+  'update.button.later': '後で',
+  'update.button.background': 'バックグラウンドでダウンロード',
+  'update.button.restart': '再起動して更新',
+  'update.button.retry': '再試行',
+  'update.button.close': '閉じる',
 }
 
 const DICTIONARIES: Record<LanguageCode, Messages> = {

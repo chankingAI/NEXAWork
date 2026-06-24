@@ -79,6 +79,12 @@ import {
   type SecurityConfigPatch,
 } from '../shared/security-center'
 import {
+  initUpdateManager,
+  type Updater,
+  type UpdateManager,
+} from './backend/update-manager'
+import type { UpdateState } from '../shared/auto-updater'
+import {
   type DataSnapshot,
   type ExportFormat,
   type ExportScope,
@@ -138,6 +144,15 @@ let securityProbeOverride: RuntimeProbe | null = null
 /** @internal Test-only: override the runtime-version probe (null = real execFile). */
 export function __setSecurityProbeForTests(fn: RuntimeProbe | null): void {
   securityProbeOverride = fn
+}
+// Auto-update manager: electron-updater + GitHub Releases lifecycle (N36).
+let updateManager: UpdateManager
+// Test seam: lets unit tests inject a fake updater before registration so no
+// real electron-updater / network feed is touched (and dev builds stay inert).
+let updaterOverride: Updater | null = null
+/** @internal Test-only: override the updater (null = real electron-updater). */
+export function __setUpdaterForTests(fn: Updater | null): void {
+  updaterOverride = fn
 }
 // Git status panel + diff viewer: shells out to `git`, watches .git (N31).
 let gitManager: GitManager
@@ -306,6 +321,31 @@ function broadcastSecurityChanged(): void {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.SECURITY_CHANGED, {})
     }
+  }
+}
+
+/** Push the latest auto-update state (incl. progress) to every window (N36). */
+function broadcastUpdateChanged(state: UpdateState): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.UPDATE_CHANGED, state)
+    }
+  }
+}
+
+/**
+ * Load electron-updater's `autoUpdater` as our minimal `Updater`, but only in a
+ * packaged app: in dev / under tests there is no update feed, so we return null
+ * to keep the manager inert. The require is lazy so importing this module never
+ * pulls electron-updater into the test or renderer bundle.
+ */
+function loadProductionUpdater(): Updater | null {
+  if (!app.isPackaged) return null
+  try {
+    const mod = require('electron-updater') as { autoUpdater: Updater }
+    return mod.autoUpdater
+  } catch {
+    return null
   }
 }
 
@@ -845,6 +885,18 @@ export function registerIPCHandlers(): void {
       info.riskLevel,
     )
   })
+
+  // Initialize the N36 auto-update manager (electron-updater + GitHub Releases).
+  // It checks on startup and every 6 hours, asks before downloading, streams
+  // progress to every window, and never replaces the running version on failure.
+  updateManager?.dispose()
+  const updater = updaterOverride ?? loadProductionUpdater()
+  updateManager = initUpdateManager({
+    currentVersion: app.getVersion(),
+    updater,
+  })
+  updateManager.onChanged(broadcastUpdateChanged)
+  updateManager.start()
 
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
@@ -2049,6 +2101,23 @@ export function registerIPCHandlers(): void {
       byteLength: Buffer.byteLength(content, 'utf-8'),
     }
   })
+
+  // === Auto-update (N36) ===
+  ipcMain.handle(IPC_CHANNELS.UPDATE_GET_STATE, async () =>
+    updateManager.getState(),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () =>
+    updateManager.checkForUpdates(),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_DOWNLOAD, async () =>
+    updateManager.downloadUpdate(),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL, async () => ({
+    success: updateManager.quitAndInstall(),
+  }))
 
   // === Terminal (N29) ===
   ipcMain.handle(
