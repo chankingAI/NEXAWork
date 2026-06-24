@@ -12,13 +12,28 @@
  * It keeps zero native dependencies and runs identically under `bun test` by
  * accepting an injectable clock and a nullable output directory (in-memory).
  */
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { join } from 'path'
 import type {
   RecorderStatus,
+  RecordingConfig,
   RecordingState,
   RecordStopResult,
 } from '../../shared/ipc-channels'
+import {
+  coerceRecordingConfig,
+  DEFAULT_RECORDING_CONFIG,
+  isOverMaxDuration,
+  maskSensitive,
+} from '../../shared/recording-config'
 
 /** A single captured action; a thin, serializable subset of RawActionEvent. */
 export interface RecordedAction {
@@ -35,6 +50,8 @@ export interface RecordingFile {
   durationMs: number
   eventCount: number
   taskDescription?: string
+  /** Configuration the recording was captured with (N25). */
+  config: RecordingConfig
   events: RecordedAction[]
 }
 
@@ -45,7 +62,12 @@ export interface RecorderManagerOptions {
   now?: () => number
   /** Stable id factory (tests override for determinism). */
   generateId?: () => string
+  /** Seed configuration (overrides any persisted config; used in tests). */
+  config?: Partial<RecordingConfig>
 }
+
+/** File name (under {@link RecorderManagerOptions.dir}) the config persists to. */
+const CONFIG_FILENAME = 'recording-config.json'
 
 const IDLE_STATUS: RecorderStatus = {
   sessionId: null,
@@ -70,6 +92,10 @@ export class RecorderManager {
   private spanStart = 0
   /** Last finished recording, retained so the renderer can act on it. */
   private lastResult: RecordStopResult | null = null
+  /** Pre-recording configuration (N25); persisted to disk when a dir is set. */
+  private config: RecordingConfig
+  /** Config the active recording was started with (snapshotted at start). */
+  private activeConfig: RecordingConfig = DEFAULT_RECORDING_CONFIG
 
   constructor(options: RecorderManagerOptions = {}) {
     this.dir = options.dir ?? null
@@ -77,6 +103,31 @@ export class RecorderManager {
     this.generateId =
       options.generateId ??
       (() => `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+    this.config = this.loadConfig(options.config)
+  }
+
+  /** Current persisted recording configuration. */
+  getConfig(): RecordingConfig {
+    return { ...this.config, windowFilter: [...this.config.windowFilter] }
+  }
+
+  /** Merge a partial update onto the config, persist it, and return the result. */
+  setConfig(patch: Partial<RecordingConfig>): RecordingConfig {
+    this.config = coerceRecordingConfig(patch, this.config)
+    this.saveConfig()
+    return this.getConfig()
+  }
+
+  /**
+   * True when the active recording has reached its configured max-duration limit
+   * and should be auto-stopped. Always false when idle or when no limit is set.
+   */
+  shouldAutoStop(): boolean {
+    if (this.state === 'idle') return false
+    return isOverMaxDuration(
+      this.getStatus().elapsedMs,
+      this.activeConfig.maxDurationMs,
+    )
   }
 
   /** Begin a new recording. Throws if one is already active. */
@@ -92,6 +143,7 @@ export class RecorderManager {
     this.events = []
     this.accumulatedMs = 0
     this.spanStart = ts
+    this.activeConfig = this.getConfig()
     return this.getStatus()
   }
 
@@ -118,9 +170,18 @@ export class RecorderManager {
    * Append a captured action. Counted only while actively recording, so events
    * arriving during a paused span (or after stop) are ignored.
    */
-  recordAction(action: string, detail?: string): void {
+  recordAction(
+    action: string,
+    detail?: string,
+    opts: { sensitive?: boolean } = {},
+  ): void {
     if (this.state !== 'recording') return
-    this.events.push({ action, timestamp: this.now(), detail })
+    // Drop mouse-trail events unless the active config opts in.
+    if (action === 'mouse_move' && !this.activeConfig.captureMouseTrail) return
+    const safeDetail = opts.sensitive
+      ? maskSensitive(detail, this.activeConfig.maskPasswords)
+      : detail
+    this.events.push({ action, timestamp: this.now(), detail: safeDetail })
   }
 
   /** Stop the active recording, persist it, and reset to idle. */
@@ -140,6 +201,7 @@ export class RecorderManager {
       durationMs,
       eventCount: this.events.length,
       taskDescription: this.taskDescription,
+      config: this.activeConfig,
       events: this.events,
     }
     const outputPath = this.persist(file)
@@ -152,6 +214,43 @@ export class RecorderManager {
     this.lastResult = result
     this.reset()
     return result
+  }
+
+  /**
+   * Load a persisted recording by id, or null when it is missing/unreadable.
+   * Used by the replay (N26) and skill (N27) layers.
+   */
+  loadRecording(id: string): RecordingFile | null {
+    if (!this.dir || !id) return null
+    const path = join(this.dir, `${id}.json`)
+    if (!existsSync(path)) return null
+    try {
+      return JSON.parse(readFileSync(path, 'utf-8')) as RecordingFile
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * List persisted recordings (newest first), parsed from the output dir.
+   * Returns an empty list when no dir is configured (in-memory/tests).
+   */
+  listRecordings(): RecordingFile[] {
+    if (!this.dir || !existsSync(this.dir)) return []
+    const files: RecordingFile[] = []
+    for (const name of readdirSync(this.dir)) {
+      if (!name.endsWith('.json') || name === CONFIG_FILENAME) continue
+      try {
+        files.push(
+          JSON.parse(
+            readFileSync(join(this.dir, name), 'utf-8'),
+          ) as RecordingFile,
+        )
+      } catch {
+        // Skip corrupt files rather than failing the whole listing.
+      }
+    }
+    return files.sort((a, b) => b.startTime - a.startTime)
   }
 
   /** Delete a persisted recording by id (used by the "discard" action). */
@@ -215,6 +314,38 @@ export class RecorderManager {
     this.events = []
     this.accumulatedMs = 0
     this.spanStart = 0
+  }
+
+  /** Load persisted config from disk, layering any explicit seed on top. */
+  private loadConfig(seed?: Partial<RecordingConfig>): RecordingConfig {
+    let persisted: RecordingConfig = DEFAULT_RECORDING_CONFIG
+    if (this.dir) {
+      const path = join(this.dir, CONFIG_FILENAME)
+      if (existsSync(path)) {
+        try {
+          persisted = coerceRecordingConfig(
+            JSON.parse(readFileSync(path, 'utf-8')),
+          )
+        } catch {
+          persisted = DEFAULT_RECORDING_CONFIG
+        }
+      }
+    }
+    return seed ? coerceRecordingConfig(seed, persisted) : persisted
+  }
+
+  /** Atomically persist the current config when an output dir is configured. */
+  private saveConfig(): void {
+    if (!this.dir) return
+    if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true })
+    const path = join(this.dir, CONFIG_FILENAME)
+    const tmp = `${path}.tmp`
+    writeFileSync(tmp, JSON.stringify(this.config, null, 2), 'utf-8')
+    try {
+      renameSync(tmp, path)
+    } catch {
+      if (existsSync(tmp)) rmSync(tmp)
+    }
   }
 }
 

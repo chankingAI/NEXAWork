@@ -135,28 +135,42 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('data:backup')
     expect(registeredChannels).toContain('data:restore')
 
-    // Recording (6: N24; RECORD_CHANGED is push-only)
+    // Recording (8: N24 + N25 config; RECORD_CHANGED is push-only)
     expect(registeredChannels).toContain('record:start')
     expect(registeredChannels).toContain('record:pause')
     expect(registeredChannels).toContain('record:resume')
     expect(registeredChannels).toContain('record:stop')
     expect(registeredChannels).toContain('record:status')
     expect(registeredChannels).toContain('record:discard')
+    expect(registeredChannels).toContain('record:getConfig')
+    expect(registeredChannels).toContain('record:setConfig')
+    expect(registeredChannels).toContain('record:list')
+
+    // Replay (8: N26; REPLAY_CHANGED + REPLAY_DONE are push-only)
+    expect(registeredChannels).toContain('replay:load')
+    expect(registeredChannels).toContain('replay:play')
+    expect(registeredChannels).toContain('replay:pause')
+    expect(registeredChannels).toContain('replay:step')
+    expect(registeredChannels).toContain('replay:stop')
+    expect(registeredChannels).toContain('replay:setSpeed')
+    expect(registeredChannels).toContain('replay:status')
+    expect(registeredChannels).toContain('replay:report')
 
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 74 channels registered', async () => {
+  test('total handler count: 85 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
-    // + 8 data (N23) + 6 record (N24) + 4 window + 2 app = 74
-    expect(mockHandlers.size).toBe(74)
+    // + 8 data (N23) + 9 record (6 N24 + 2 N25 config + 1 N26 list)
+    // + 8 replay (N26) + 4 window + 2 app = 85
+    expect(mockHandlers.size).toBe(85)
   })
 })
 
@@ -1036,5 +1050,100 @@ describe('Handler Logic: Recording (N24)', () => {
     const discard = mockHandlers.get('record:discard')!
     const result = await discard({}, { id: 'rec_missing' })
     expect(typeof result.success).toBe('boolean')
+  })
+
+  test('record:getConfig returns a fully-populated config', async () => {
+    const getConfig = mockHandlers.get('record:getConfig')!
+    const config = await getConfig({})
+    expect(config.mode).toBeTruthy()
+    expect(config.screenshotFrequency).toBeTruthy()
+    expect(typeof config.maskPasswords).toBe('boolean')
+    expect(Array.isArray(config.windowFilter)).toBe(true)
+    expect(typeof config.maxDurationMs).toBe('number')
+  })
+
+  test('record:setConfig persists a patch and getConfig reflects it', async () => {
+    const setConfig = mockHandlers.get('record:setConfig')!
+    const getConfig = mockHandlers.get('record:getConfig')!
+    const updated = await setConfig(
+      {},
+      { mode: 'hybrid', maskPasswords: false, windowFilter: ['Chrome'] },
+    )
+    expect(updated.mode).toBe('hybrid')
+    expect(updated.maskPasswords).toBe(false)
+    const roundTrip = await getConfig({})
+    expect(roundTrip.mode).toBe('hybrid')
+    expect(roundTrip.maskPasswords).toBe(false)
+    expect(roundTrip.windowFilter).toEqual(['Chrome'])
+    // restore the default so later tests are not affected
+    await setConfig({}, { mode: 'cdp', maskPasswords: true, windowFilter: [] })
+  })
+
+  test('record:setConfig normalizes malformed input defensively', async () => {
+    const setConfig = mockHandlers.get('record:setConfig')!
+    const updated = await setConfig({}, { mode: 'bogus', maxDurationMs: -10 })
+    expect(['cdp', 'desktop', 'hybrid']).toContain(updated.mode)
+    expect(updated.maxDurationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  test('record:list returns the recordings array', async () => {
+    const list = mockHandlers.get('record:list')!
+    const result = await list({})
+    expect(Array.isArray(result.recordings)).toBe(true)
+  })
+})
+
+describe('Handler Logic: Replay (N26)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+    // Reset the replay controller to a clean idle state between tests.
+    await mockHandlers.get('replay:stop')!({})
+  })
+
+  test('replay:status reports an idle snapshot before anything is loaded', async () => {
+    const status = await mockHandlers.get('replay:status')!({})
+    expect(status.state).toBe('idle')
+    expect(status.recordingId).toBeNull()
+    expect(status.totalSteps).toBe(0)
+    expect(status.currentStep).toBe(-1)
+    expect(status.progress).toBe(0)
+    expect(Array.isArray(status.steps)).toBe(true)
+  })
+
+  test('replay:report returns a null report before a run completes', async () => {
+    const result = await mockHandlers.get('replay:report')!({})
+    expect(result.report).toBeNull()
+  })
+
+  test('replay:load rejects when recordingId is missing', async () => {
+    const load = mockHandlers.get('replay:load')!
+    await expect(load({}, {})).rejects.toBeDefined()
+  })
+
+  test('replay:load rejects with NOT_FOUND for an unknown recording', async () => {
+    const load = mockHandlers.get('replay:load')!
+    await expect(load({}, { recordingId: 'rec_missing' })).rejects.toBeDefined()
+  })
+
+  test('replay:setSpeed returns a status with a supported speed', async () => {
+    const setSpeed = mockHandlers.get('replay:setSpeed')!
+    const status = await setSpeed({}, { speed: 2 })
+    expect([0.5, 1, 2, 5]).toContain(status.speed)
+    const fallback = await setSpeed({}, { speed: 999 })
+    expect([0.5, 1, 2, 5]).toContain(fallback.speed)
+  })
+
+  test('replay:play rejects when no recording is loaded', async () => {
+    const play = mockHandlers.get('replay:play')!
+    await expect(play({})).rejects.toBeDefined()
+  })
+
+  test('replay:stop is a no-op idle snapshot when nothing is loaded', async () => {
+    const stop = mockHandlers.get('replay:stop')!
+    const status = await stop({})
+    expect(status.state).toBe('idle')
   })
 })

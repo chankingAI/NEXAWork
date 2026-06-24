@@ -14,6 +14,10 @@ import type {
   ExportFormat,
   ConflictStrategy,
   RecorderStatus,
+  RecordingConfig,
+  RecordingSummary,
+  ReplayReport,
+  ReplayStatus,
 } from '../shared/ipc-channels'
 
 /**
@@ -282,12 +286,46 @@ const nexaworkAPI = {
 
     discard: (input: { id: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.RECORD_DISCARD, input),
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_GET_CONFIG, {}),
+    setConfig: (input: Partial<RecordingConfig>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RECORD_SET_CONFIG, input),
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_LIST, {}),
 
     onChanged: (callback: (status: RecorderStatus) => void) => {
       const handler = (_: unknown, data: RecorderStatus) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.RECORD_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.RECORD_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Replay (N26) ===
+  replay: {
+    load: (input: { recordingId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.REPLAY_LOAD, input),
+    play: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_PLAY, {}),
+    pause: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_PAUSE, {}),
+    step: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_STEP, {}),
+    stop: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_STOP, {}),
+    setSpeed: (input: { speed: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.REPLAY_SET_SPEED, input),
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_STATUS, {}),
+    report: () => ipcRenderer.invoke(IPC_CHANNELS.REPLAY_REPORT, {}),
+
+    onChanged: (callback: (status: ReplayStatus) => void) => {
+      const handler = (_: unknown, data: ReplayStatus) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.REPLAY_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.REPLAY_CHANGED, handler)
+      }
+    },
+
+    onDone: (callback: (report: ReplayReport) => void) => {
+      const handler = (_: unknown, data: ReplayReport) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.REPLAY_DONE, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.REPLAY_DONE, handler)
       }
     },
   },

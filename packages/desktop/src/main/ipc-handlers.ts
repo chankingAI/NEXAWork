@@ -17,6 +17,7 @@ import type {
   DesktopPermissionMode,
   PermissionDecisionAction,
   PermissionScope,
+  RecordingConfig,
 } from '../shared/ipc-channels'
 import { computeNextRun, parseSchedule } from '../shared/schedule'
 import { PROJECT_TEMPLATES, getTemplate } from '../shared/project-templates'
@@ -40,6 +41,7 @@ import {
   initRecorderManager,
   type RecorderManager,
 } from './backend/recorder-manager'
+import { initReplayManager, type ReplayManager } from './backend/replay-manager'
 import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 import {
@@ -76,6 +78,9 @@ let secureStore: SecureStore
 // Operation recorder + its 1s status-push timer (N24).
 let recorder: RecorderManager
 let recordTicker: ReturnType<typeof setInterval> | null = null
+// Replay controller + its step-advance timer (N26).
+let replay: ReplayManager
+let replayTicker: ReturnType<typeof setInterval> | null = null
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -152,6 +157,11 @@ function startRecordTicker(): void {
   if (recordTicker) return
   recordTicker = setInterval(() => {
     if (recorder.isActive()) {
+      // Enforce the N25 max-duration auto-stop threshold.
+      if (recorder.shouldAutoStop()) {
+        recorder.stop()
+        stopRecordTicker()
+      }
       broadcastRecordingChanged()
     } else {
       stopRecordTicker()
@@ -164,6 +174,53 @@ function stopRecordTicker(): void {
   if (recordTicker) {
     clearInterval(recordTicker)
     recordTicker = null
+  }
+}
+
+/** Push the live replay status to every renderer window (N26). */
+function broadcastReplayChanged(): void {
+  const status = replay.getStatus()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.REPLAY_CHANGED, status)
+    }
+  }
+}
+
+/** Push the completion report to every renderer window (N26). */
+function broadcastReplayDone(): void {
+  const report = replay.getReport()
+  if (!report) return
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.REPLAY_DONE, report)
+    }
+  }
+}
+
+/** Start the timer that advances replay steps and pushes status (N26). */
+function startReplayTicker(): void {
+  if (replayTicker) return
+  replayTicker = setInterval(() => {
+    if (replay.isActive()) {
+      if (replay.tick()) {
+        broadcastReplayChanged()
+        if (!replay.isActive()) {
+          broadcastReplayDone()
+          stopReplayTicker()
+        }
+      }
+    } else {
+      stopReplayTicker()
+    }
+  }, 200)
+}
+
+/** Stop the replay step-advance timer. */
+function stopReplayTicker(): void {
+  if (replayTicker) {
+    clearInterval(replayTicker)
+    replayTicker = null
   }
 }
 
@@ -464,6 +521,10 @@ export function registerIPCHandlers(): void {
   // Initialize the N24 operation recorder; recordings persist under userData.
   stopRecordTicker()
   recorder = initRecorderManager({ dir: resolveRecordingsDir() })
+
+  // Initialize the N26 replay controller (drives the ReplayPanel).
+  stopReplayTicker()
+  replay = initReplayManager()
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1048,6 +1109,91 @@ export function registerIPCHandlers(): void {
       return { success: recorder.discard(input.id) }
     },
   )
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_GET_CONFIG, async () =>
+    recorder.getConfig(),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.RECORD_SET_CONFIG,
+    async (_event, input: Partial<RecordingConfig> = {}) =>
+      recorder.setConfig(input ?? {}),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_LIST, async () => ({
+    recordings: recorder.listRecordings().map(r => ({
+      id: r.id,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      durationMs: r.durationMs,
+      eventCount: r.eventCount,
+      taskDescription: r.taskDescription,
+    })),
+  }))
+
+  // === Replay (N26) ===
+  ipcMain.handle(
+    IPC_CHANNELS.REPLAY_LOAD,
+    async (_event, input: { recordingId: string }) => {
+      if (!input?.recordingId) {
+        throw createError('INVALID_INPUT', 'recordingId is required')
+      }
+      const file = recorder.loadRecording(input.recordingId)
+      if (!file) {
+        throw createError(
+          'NOT_FOUND',
+          `Recording ${input.recordingId} not found`,
+        )
+      }
+      stopReplayTicker()
+      const status = replay.load(file)
+      broadcastReplayChanged()
+      return status
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_PLAY, async () => {
+    const status = replay.play()
+    startReplayTicker()
+    broadcastReplayChanged()
+    return status
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_PAUSE, async () => {
+    const status = replay.pause()
+    broadcastReplayChanged()
+    return status
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_STEP, async () => {
+    const status = replay.step()
+    broadcastReplayChanged()
+    if (!replay.isActive()) broadcastReplayDone()
+    return status
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_STOP, async () => {
+    const status = replay.stop()
+    stopReplayTicker()
+    broadcastReplayChanged()
+    broadcastReplayDone()
+    return status
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.REPLAY_SET_SPEED,
+    async (_event, input: { speed: number }) => {
+      const status = replay.setSpeed(input?.speed ?? 1)
+      broadcastReplayChanged()
+      return status
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_STATUS, async () => replay.getStatus())
+
+  ipcMain.handle(IPC_CHANNELS.REPLAY_REPORT, async () => ({
+    report: replay.getReport(),
+  }))
 
   // === Experts ===
   ipcMain.handle(

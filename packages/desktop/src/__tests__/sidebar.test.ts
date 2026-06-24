@@ -208,6 +208,7 @@ describe('Navigation State', () => {
       projects: 'ProjectsView',
       experts: 'ExpertsView',
       skills: 'SkillsView',
+      replay: 'ReplayView',
       automation: 'AutomationView',
       security: 'SecurityView',
       more: 'MoreMenu',

@@ -11,8 +11,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
   RecorderStatus,
+  RecordingConfig,
   RecordStopResult,
 } from '../../shared/ipc-channels'
+import { DEFAULT_RECORDING_CONFIG } from '../../shared/recording-config'
 
 const IDLE_STATUS: RecorderStatus = {
   sessionId: null,
@@ -24,17 +26,22 @@ const IDLE_STATUS: RecorderStatus = {
 export interface UseRecorderReturn {
   status: RecorderStatus
   lastResult: RecordStopResult | null
+  config: RecordingConfig
   start: (taskDescription?: string) => Promise<void>
   pause: () => Promise<void>
   resume: () => Promise<void>
   stop: () => Promise<RecordStopResult | null>
   discard: (id: string) => Promise<void>
   clearResult: () => void
+  setConfig: (patch: Partial<RecordingConfig>) => Promise<void>
 }
 
 export function useRecorder(): UseRecorderReturn {
   const [status, setStatus] = useState<RecorderStatus>(IDLE_STATUS)
   const [lastResult, setLastResult] = useState<RecordStopResult | null>(null)
+  const [config, setConfigState] = useState<RecordingConfig>(
+    DEFAULT_RECORDING_CONFIG,
+  )
 
   useEffect(() => {
     let mounted = true
@@ -42,8 +49,11 @@ export function useRecorder(): UseRecorderReturn {
     if (!api) return
 
     const load = async () => {
-      const next = await api.status()
-      if (mounted) setStatus(next)
+      const [next, cfg] = await Promise.all([api.status(), api.getConfig()])
+      if (mounted) {
+        setStatus(next)
+        setConfigState(cfg)
+      }
     }
 
     void load()
@@ -93,14 +103,23 @@ export function useRecorder(): UseRecorderReturn {
 
   const clearResult = useCallback(() => setLastResult(null), [])
 
+  const setConfig = useCallback(async (patch: Partial<RecordingConfig>) => {
+    const api = window.nexawork?.record
+    if (!api) return
+    const next = await api.setConfig(patch)
+    setConfigState(next)
+  }, [])
+
   return {
     status,
     lastResult,
+    config,
     start,
     pause,
     resume,
     stop,
     discard,
     clearResult,
+    setConfig,
   }
 }

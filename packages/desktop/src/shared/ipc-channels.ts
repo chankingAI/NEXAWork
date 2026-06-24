@@ -4,6 +4,17 @@
  * 63-method centralized handler registry (Codex pattern)
  */
 
+import type { ReplayReport, ReplayStatus } from './replay'
+
+export type {
+  ReplayReport,
+  ReplayStatus,
+  ReplayStep,
+  ReplayStepStatus,
+  ReplayState,
+  ReplaySpeed,
+} from './replay'
+
 export const IPC_CHANNELS = {
   // Chat
   CHAT_SEND: 'chat:send',
@@ -95,7 +106,22 @@ export const IPC_CHANNELS = {
   RECORD_RESUME: 'record:resume',
   RECORD_STATUS: 'record:status',
   RECORD_DISCARD: 'record:discard',
+  RECORD_GET_CONFIG: 'record:getConfig', // N25
+  RECORD_SET_CONFIG: 'record:setConfig', // N25
+  RECORD_LIST: 'record:list', // N26
   RECORD_CHANGED: 'record:changed', // push: main → renderer
+
+  // Replay (N26)
+  REPLAY_LOAD: 'replay:load',
+  REPLAY_PLAY: 'replay:play',
+  REPLAY_PAUSE: 'replay:pause',
+  REPLAY_STEP: 'replay:step',
+  REPLAY_STOP: 'replay:stop',
+  REPLAY_SET_SPEED: 'replay:setSpeed',
+  REPLAY_STATUS: 'replay:status',
+  REPLAY_REPORT: 'replay:report',
+  REPLAY_CHANGED: 'replay:changed', // push: main → renderer
+  REPLAY_DONE: 'replay:done', // push: main → renderer (report ready)
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -442,9 +468,63 @@ export interface IPCRequestMap {
     input: { id: string }
     output: { success: boolean }
   }
+  [IPC_CHANNELS.RECORD_GET_CONFIG]: {
+    input: Record<string, never>
+    output: RecordingConfig
+  }
+  [IPC_CHANNELS.RECORD_SET_CONFIG]: {
+    input: Partial<RecordingConfig>
+    output: RecordingConfig
+  }
+  [IPC_CHANNELS.RECORD_LIST]: {
+    input: Record<string, never>
+    output: { recordings: RecordingSummary[] }
+  }
   [IPC_CHANNELS.RECORD_CHANGED]: {
     input: Record<string, never>
     output: RecorderStatus
+  }
+
+  // Replay (N26)
+  [IPC_CHANNELS.REPLAY_LOAD]: {
+    input: { recordingId: string }
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_PLAY]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_PAUSE]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STEP]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STOP]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_SET_SPEED]: {
+    input: { speed: number }
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STATUS]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_REPORT]: {
+    input: Record<string, never>
+    output: { report: ReplayReport | null }
+  }
+  [IPC_CHANNELS.REPLAY_CHANGED]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_DONE]: {
+    input: Record<string, never>
+    output: ReplayReport
   }
 
   // Window
@@ -738,6 +818,16 @@ export interface RecorderStatus {
   elapsedMs: number
 }
 
+/** Lightweight recording metadata for list views (N26 replay / N27 skills). */
+export interface RecordingSummary {
+  id: string
+  startTime: number
+  endTime: number
+  durationMs: number
+  eventCount: number
+  taskDescription?: string
+}
+
 /** Outcome returned when a recording stops; drives the completion dialog. */
 export interface RecordStopResult {
   id: string
@@ -745,6 +835,37 @@ export interface RecordStopResult {
   eventCount: number
   /** Path the recording JSON was written to, or null when not persisted. */
   outputPath: string | null
+}
+
+// --- Recording configuration (N25) ---
+
+/** Which recorder backend captures the session. */
+export type RecordMode = 'cdp' | 'desktop' | 'hybrid'
+
+/** How often screenshots are captured during a recording. */
+export type ScreenshotFrequency = 'on-action' | 'every-3s' | 'every-5s'
+
+/**
+ * Pre-recording configuration chosen in the RecordConfigPanel (N25). Persisted
+ * across sessions and applied when the next recording starts.
+ */
+export interface RecordingConfig {
+  /** Recorder backend: browser (CDP), desktop, or both. */
+  mode: RecordMode
+  /** Screenshot cadence. */
+  screenshotFrequency: ScreenshotFrequency
+  /** Auto-mask password-field input so secrets never reach disk. */
+  maskPasswords: boolean
+  /** App/window titles to record; empty means capture everything. */
+  windowFilter: string[]
+  /** Whether to record fine-grained mouse_move events (mouse trail). */
+  captureMouseTrail: boolean
+  /** Advanced: enable UI Automation element identification. */
+  elementCapture: boolean
+  /** Advanced: merge consecutive keystrokes / scroll into single steps. */
+  mergeOperations: boolean
+  /** Advanced: auto-stop threshold in ms; 0 disables the limit. */
+  maxDurationMs: number
 }
 
 // --- Stream Events ---
