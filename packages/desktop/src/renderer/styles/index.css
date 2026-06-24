@@ -67,8 +67,9 @@
   --duration-slow: 350ms;
 
   /* Font family */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
-    "Segoe UI", Roboto, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI",
+    Roboto, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
