@@ -10,9 +10,15 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  AuditExportFormat,
+  AuditFilter,
   AuditLogEntry,
+  RuleCategory,
+  RuleDecision,
+  RuntimeId,
   SecurityConfig,
   SecurityConfigPatch,
+  SecurityRules,
 } from '../../shared/ipc-channels'
 import { DEFAULT_SECURITY_CONFIG } from '../../shared/security-center'
 
@@ -27,8 +33,18 @@ export interface UseSecurityCenterResult {
   error: string | null
   refresh: () => Promise<void>
   updateConfig: (patch: SecurityConfigPatch) => Promise<boolean>
+  updateRules: (rules: Partial<SecurityRules>) => Promise<boolean>
+  testRule: (
+    category: RuleCategory,
+    target: string,
+  ) => Promise<RuleDecision | null>
+  installRuntime: (id: RuntimeId) => Promise<boolean>
+  uninstallRuntime: (id: RuntimeId) => Promise<boolean>
   clearAudit: () => Promise<boolean>
-  exportAudit: () => Promise<{ content: string; filename: string } | null>
+  exportAudit: (options?: {
+    format?: AuditExportFormat
+    filter?: AuditFilter
+  }) => Promise<{ content: string; filename: string } | null>
 }
 
 export function useSecurityCenter(): UseSecurityCenterResult {
@@ -76,6 +92,78 @@ export function useSecurityCenter(): UseSecurityCenterResult {
     [api],
   )
 
+  const updateRules = useCallback(
+    async (rules: Partial<SecurityRules>): Promise<boolean> => {
+      if (!api?.updateRules) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await api.updateRules({ rules })
+        if (result?.config) setConfig(result.config)
+        return Boolean(result?.success)
+      } catch (err) {
+        setError((err as Error)?.message ?? 'failed to update rules')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [api],
+  )
+
+  const testRule = useCallback(
+    async (
+      category: RuleCategory,
+      target: string,
+    ): Promise<RuleDecision | null> => {
+      if (!api?.testRule) return null
+      try {
+        const result = await api.testRule({ category, target })
+        return result?.decision ?? null
+      } catch (err) {
+        setError((err as Error)?.message ?? 'failed to test rule')
+        return null
+      }
+    },
+    [api],
+  )
+
+  const installRuntime = useCallback(
+    async (id: RuntimeId): Promise<boolean> => {
+      if (!api?.installRuntime) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await api.installRuntime({ id })
+        return Boolean(result?.success)
+      } catch (err) {
+        setError((err as Error)?.message ?? 'failed to install runtime')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [api],
+  )
+
+  const uninstallRuntime = useCallback(
+    async (id: RuntimeId): Promise<boolean> => {
+      if (!api?.uninstallRuntime) return false
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await api.uninstallRuntime({ id })
+        return Boolean(result?.success)
+      } catch (err) {
+        setError((err as Error)?.message ?? 'failed to uninstall runtime')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [api],
+  )
+
   const clearAudit = useCallback(async (): Promise<boolean> => {
     if (!api) return false
     setBusy(true)
@@ -91,16 +179,19 @@ export function useSecurityCenter(): UseSecurityCenterResult {
     }
   }, [api])
 
-  const exportAudit = useCallback(async () => {
-    if (!api) return null
-    try {
-      const result = await api.auditExport()
-      return { content: result.content, filename: result.filename }
-    } catch (err) {
-      setError((err as Error)?.message ?? 'failed to export audit log')
-      return null
-    }
-  }, [api])
+  const exportAudit = useCallback(
+    async (options?: { format?: AuditExportFormat; filter?: AuditFilter }) => {
+      if (!api) return null
+      try {
+        const result = await api.auditExport(options)
+        return { content: result.content, filename: result.filename }
+      } catch (err) {
+        setError((err as Error)?.message ?? 'failed to export audit log')
+        return null
+      }
+    },
+    [api],
+  )
 
   // Initial load.
   useEffect(() => {
@@ -132,6 +223,10 @@ export function useSecurityCenter(): UseSecurityCenterResult {
     error,
     refresh,
     updateConfig,
+    updateRules,
+    testRule,
+    installRuntime,
+    uninstallRuntime,
     clearAudit,
     exportAudit,
   }

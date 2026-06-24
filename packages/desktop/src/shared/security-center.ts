@@ -11,7 +11,18 @@
  * Everything here runs identically in the main process, the renderer and under
  * `bun test`; all disk / IPC / permission wiring lives in the SecurityManager
  * and the IPC handlers.
+ *
+ * The N33–N35 sub-pages extend this model: `SecurityConfig.rules` carries the
+ * file / command / network rule lists (evaluated in `../shared/security-rules`),
+ * each runtime tracks an install `status` (N34), and the audit filter gains a
+ * time range + free-text search plus a CSV export format (N35).
  */
+import {
+  cloneRules,
+  DEFAULT_SECURITY_RULES,
+  normalizeRules,
+  type SecurityRules,
+} from './security-rules'
 
 // ─── Policy model ─────────────────────────────────────────────
 
@@ -42,10 +53,30 @@ export interface DataSecurityState {
   encryption: boolean
 }
 
-/** A built-in runtime toggle with an optional detected version. */
+/** Identifies a built-in runtime managed on the N34 sub-page. */
+export type RuntimeId = 'python' | 'node' | 'gitBash'
+
+export const RUNTIME_IDS: readonly RuntimeId[] = [
+  'python',
+  'node',
+  'gitBash',
+] as const
+
+/** Install lifecycle of a built-in runtime (N34). */
+export type RuntimeInstallStatus =
+  | 'installed'
+  | 'not-installed'
+  | 'installing'
+  | 'uninstalling'
+
+/** A built-in runtime toggle with an optional detected version + install state. */
 export interface RuntimeState {
   enabled: boolean
   version?: string
+  /** Whether the runtime is currently provisioned (N34). */
+  installed: boolean
+  /** Install-lifecycle status (N34). */
+  status: RuntimeInstallStatus
 }
 
 /** Built-in runtimes: a master switch + per-runtime toggles. */
@@ -53,7 +84,7 @@ export interface RuntimeConfig {
   enabled: boolean
   python: RuntimeState
   node: RuntimeState
-  gitBash: { enabled: boolean }
+  gitBash: RuntimeState
 }
 
 /** Experimental features. */
@@ -71,6 +102,8 @@ export interface SecurityConfig {
   systemTools: SystemToolsMode
   runtimes: RuntimeConfig
   experimental: ExperimentalFeatures
+  /** File / command / network rule lists (N33). */
+  rules: SecurityRules
 }
 
 /** Default policy: sandbox fully on, encryption on, system tools read-only. */
@@ -85,11 +118,12 @@ export const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   systemTools: 'readonly',
   runtimes: {
     enabled: true,
-    python: { enabled: true },
-    node: { enabled: true },
-    gitBash: { enabled: true },
+    python: { enabled: true, installed: true, status: 'installed' },
+    node: { enabled: true, installed: true, status: 'installed' },
+    gitBash: { enabled: true, installed: true, status: 'installed' },
   },
   experimental: { versionManagement: false, deleteProtection: true },
+  rules: DEFAULT_SECURITY_RULES,
 }
 
 /** A partial, nested patch accepted by `mergeSecurityConfig`. */
@@ -101,9 +135,10 @@ export interface SecurityConfigPatch {
     enabled?: boolean
     python?: Partial<RuntimeState>
     node?: Partial<RuntimeState>
-    gitBash?: Partial<{ enabled: boolean }>
+    gitBash?: Partial<RuntimeState>
   }
   experimental?: Partial<ExperimentalFeatures>
+  rules?: Partial<SecurityRules>
 }
 
 export function isValidSystemToolsMode(
@@ -134,6 +169,9 @@ export function mergeSecurityConfig(
       gitBash: { ...base.runtimes.gitBash, ...patch.runtimes?.gitBash },
     },
     experimental: { ...base.experimental, ...patch.experimental },
+    rules: patch.rules
+      ? normalizeRules({ ...base.rules, ...patch.rules })
+      : cloneRules(base.rules),
   }
 }
 
@@ -150,6 +188,7 @@ export function cloneConfig(config: SecurityConfig): SecurityConfig {
       gitBash: { ...config.runtimes.gitBash },
     },
     experimental: { ...config.experimental },
+    rules: cloneRules(config.rules),
   }
 }
 
@@ -190,6 +229,30 @@ export function toolCategory(tool: string): AuditCategory | null {
   if (COMMAND_TOOLS.has(tool)) return 'command'
   if (NETWORK_TOOLS.has(tool)) return 'network'
   return null
+}
+
+/**
+ * Pull the rule target (path / command / URL) out of a tool's input payload,
+ * so the N33 rules can be evaluated against the concrete operation. Returns an
+ * empty string when no recognisable target is present.
+ */
+export function extractToolTarget(
+  category: 'file' | 'command' | 'network',
+  input: unknown,
+): string {
+  if (!input || typeof input !== 'object') return ''
+  const obj = input as Record<string, unknown>
+  const pick = (...keys: string[]): string => {
+    for (const key of keys) {
+      const value = obj[key]
+      if (typeof value === 'string' && value.length > 0) return value
+    }
+    return ''
+  }
+  if (category === 'file')
+    return pick('file_path', 'path', 'filePath', 'target')
+  if (category === 'command') return pick('command', 'cmd', 'script', 'input')
+  return pick('url', 'href', 'endpoint', 'target')
 }
 
 /** Per-category effective state (a sub-policy is active only with master on). */
@@ -254,19 +317,49 @@ export const AUDIT_DECISION_COLOR: Record<AuditDecision, string> = {
 export interface AuditFilter {
   category?: AuditCategory | 'all'
   decision?: AuditDecision | 'all'
+  /** Inclusive lower bound (ISO timestamp); entries before are excluded (N35). */
+  from?: string
+  /** Inclusive upper bound (ISO timestamp); entries after are excluded (N35). */
+  to?: string
+  /** Free-text search across action + detail, case-insensitive (N35). */
+  search?: string
 }
 
-/** Filter audit entries by category and/or decision ('all' = no filter). */
+/** Parse an ISO timestamp into epoch ms, or null when unparseable. */
+function parseTime(value: string | undefined): number | null {
+  if (!value) return null
+  const ms = new Date(value).getTime()
+  return Number.isNaN(ms) ? null : ms
+}
+
+/**
+ * Filter audit entries by category, decision, time range and free-text search
+ * ('all' / undefined = no filter for that dimension) — N35.
+ */
 export function filterAuditLog(
   entries: AuditLogEntry[],
   filter: AuditFilter = {},
 ): AuditLogEntry[] {
   const { category = 'all', decision = 'all' } = filter
-  return entries.filter(
-    e =>
-      (category === 'all' || e.category === category) &&
-      (decision === 'all' || e.decision === decision),
-  )
+  const from = parseTime(filter.from)
+  const to = parseTime(filter.to)
+  const search = filter.search?.trim().toLowerCase() ?? ''
+  return entries.filter(e => {
+    if (category !== 'all' && e.category !== category) return false
+    if (decision !== 'all' && e.decision !== decision) return false
+    if (from !== null || to !== null) {
+      const ts = new Date(e.timestamp).getTime()
+      if (!Number.isNaN(ts)) {
+        if (from !== null && ts < from) return false
+        if (to !== null && ts > to) return false
+      }
+    }
+    if (search) {
+      const haystack = `${e.action} ${e.detail}`.toLowerCase()
+      if (!haystack.includes(search)) return false
+    }
+    return true
+  })
 }
 
 /** Aggregate decision counts for the audit summary badges. */
@@ -305,11 +398,64 @@ export function serializeAuditLog(
   )}\n`
 }
 
+/** Supported audit export formats (N35). */
+export type AuditExportFormat = 'json' | 'csv'
+
+export const AUDIT_EXPORT_FORMATS: readonly AuditExportFormat[] = [
+  'json',
+  'csv',
+] as const
+
+export function isAuditExportFormat(
+  value: unknown,
+): value is AuditExportFormat {
+  return value === 'json' || value === 'csv'
+}
+
+/** Escape a CSV field per RFC 4180 (quote when it contains ,"\n). */
+function csvField(value: string): string {
+  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+/** Serialize the audit log to a CSV document with a header row (N35). */
+export function serializeAuditCsv(entries: AuditLogEntry[]): string {
+  const header = [
+    'id',
+    'timestamp',
+    'category',
+    'action',
+    'decision',
+    'riskLevel',
+    'detail',
+  ]
+  const rows = entries.map(e =>
+    [e.id, e.timestamp, e.category, e.action, e.decision, e.riskLevel, e.detail]
+      .map(csvField)
+      .join(','),
+  )
+  return `${[header.join(','), ...rows].join('\r\n')}\r\n`
+}
+
+/** Serialize the audit log in the requested format (N35). */
+export function serializeAudit(
+  entries: AuditLogEntry[],
+  format: AuditExportFormat = 'json',
+  now: Date = new Date(),
+): string {
+  return format === 'csv'
+    ? serializeAuditCsv(entries)
+    : serializeAuditLog(entries, now)
+}
+
 /** Build a timestamped export filename, e.g. `nexawork-audit-20260624-0550.json`. */
-export function auditExportFilename(now: Date = new Date()): string {
+export function auditExportFilename(
+  format: AuditExportFormat = 'json',
+  now: Date = new Date(),
+): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   const stamp =
     `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
     `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-  return `nexawork-audit-${stamp}.json`
+  return `nexawork-audit-${stamp}.${format}`
 }

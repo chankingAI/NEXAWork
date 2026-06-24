@@ -120,10 +120,12 @@ interface PendingRequest {
 }
 
 /**
- * Sandbox policy gate (N32). Given a tool name, returns `true` to auto-allow
- * (an unguarded sandbox category), or `null` to defer to the normal flow.
+ * Sandbox policy gate (N32 / N33). Given a tool name and its input, returns
+ * `true` to auto-allow (an unguarded category or an explicit allow rule),
+ * `false` to deny outright (an explicit deny rule), or `null` to defer to the
+ * normal permission flow.
  */
-export type PolicyGate = (tool: string) => boolean | null
+export type PolicyGate = (tool: string, input?: unknown) => boolean | null
 
 /** Audit sink (N32): forwards every recorded decision to the security center. */
 export type AuditSink = (info: {
@@ -230,10 +232,17 @@ export class PermissionManager {
   ): Promise<boolean> {
     const { riskLevel, description, affectedScope } = classifyTool(tool)
 
-    // N32: an unguarded sandbox category bypasses the prompt entirely.
-    if (this.policyGate?.(tool.name) === true) {
+    // N32/N33: the sandbox policy + rules may decide before any prompt.
+    const gated = this.policyGate?.(tool.name, tool.input)
+    if (gated === true) {
+      // Unguarded category or an explicit allow rule → bypass the prompt.
       this.record(tool, 'allow', 'auto', riskLevel)
       return Promise.resolve(true)
+    }
+    if (gated === false) {
+      // An explicit deny rule (N33) → block without prompting.
+      this.record(tool, 'deny', 'auto', riskLevel)
+      return Promise.resolve(false)
     }
 
     if (this.mode === 'full') {

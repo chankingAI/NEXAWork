@@ -30,7 +30,14 @@ import type {
   ParsedFileDiff,
   SecurityConfig,
   SecurityConfigPatch,
+  SecurityRules,
+  RuntimeId,
+  RuntimeState,
+  RuleCategory,
+  RuleDecision,
   AuditLogEntry,
+  AuditExportFormat,
+  AuditFilter,
   UpdateState,
 } from '../shared/ipc-channels'
 
@@ -611,11 +618,36 @@ const nexaworkAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_LIST, input ?? {}),
     auditClear: (): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_CLEAR, {}),
-    auditExport: (): Promise<{
+    auditExport: (input?: {
+      format?: AuditExportFormat
+      filter?: AuditFilter
+    }): Promise<{
       content: string
       filename: string
+      format: AuditExportFormat
       byteLength: number
-    }> => ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_EXPORT, {}),
+    }> => ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_EXPORT, input ?? {}),
+
+    // N33: file / command / network rules
+    updateRules: (input: {
+      rules: Partial<SecurityRules>
+    }): Promise<{ success: boolean; config: SecurityConfig }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_RULES_UPDATE, input),
+    testRule: (input: {
+      category: RuleCategory
+      target: string
+    }): Promise<{ decision: RuleDecision }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_RULES_TEST, input),
+
+    // N34: built-in runtime install / uninstall
+    installRuntime: (input: {
+      id: RuntimeId
+    }): Promise<{ success: boolean; state: RuntimeState }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_RUNTIME_INSTALL, input),
+    uninstallRuntime: (input: {
+      id: RuntimeId
+    }): Promise<{ success: boolean; state: RuntimeState }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_RUNTIME_UNINSTALL, input),
 
     onChanged: (callback: () => void) => {
       const handler = () => callback()

@@ -248,6 +248,12 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('security:audit:clear')
     expect(registeredChannels).toContain('security:audit:export')
 
+    // Security sub-pages (4: N33–N35)
+    expect(registeredChannels).toContain('security:rules:update')
+    expect(registeredChannels).toContain('security:rules:test')
+    expect(registeredChannels).toContain('security:runtime:install')
+    expect(registeredChannels).toContain('security:runtime:uninstall')
+
     // Auto-update (4: N36; update:changed is push-only)
     expect(registeredChannels).toContain('update:getState')
     expect(registeredChannels).toContain('update:check')
@@ -259,7 +265,7 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 136 channels registered', async () => {
+  test('total handler count: 149 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
@@ -276,10 +282,12 @@ describe('IPC Handler Registration', () => {
     //   checkout/merge/diff/diffHunks; git:changed is push-only)
     // + 5 security (N32: getConfig/updateConfig/audit:list/audit:clear/
     //   audit:export; security:changed is push-only)
+    // + 4 security sub-pages (N33–N35: rules:update/rules:test/runtime:install/
+    //   runtime:uninstall)
     // + 4 update (N36: getState/check/download/install; update:changed is
     //   push-only)
-    // + 4 window + 2 app = 145
-    expect(mockHandlers.size).toBe(145)
+    // + 4 window + 2 app = 149
+    expect(mockHandlers.size).toBe(149)
   })
 })
 
@@ -1969,6 +1977,86 @@ describe('Handler Logic: Security center (N32)', () => {
     expect(
       (await mockHandlers.get('security:audit:list')!({})).entries.length,
     ).toBe(0)
+  })
+
+  test('security:audit:export supports a csv format + filter', async () => {
+    await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { dataSecurity: { gateway: false } } },
+    )
+    const res = await mockHandlers.get('security:audit:export')!(
+      {},
+      { format: 'csv', filter: { category: 'policy', decision: 'all' } },
+    )
+    expect(res.format).toBe('csv')
+    expect(res.filename).toMatch(/\.csv$/)
+    expect(res.content.split('\r\n')[0]).toContain('category')
+  })
+
+  test('security:rules:update normalises + persists rules (N33)', async () => {
+    const res = await mockHandlers.get('security:rules:update')!(
+      {},
+      { rules: { fileAllow: ['/work/**', '/work/**'], commandAllow: ['git'] } },
+    )
+    expect(res.success).toBe(true)
+    expect(res.config.rules.fileAllow).toEqual(['/work/**'])
+    const reread = await mockHandlers.get('security:getConfig')!({})
+    expect(reread.rules.commandAllow).toEqual(['git'])
+  })
+
+  test('security:rules:update rejects a missing rules object', async () => {
+    await expect(
+      mockHandlers.get('security:rules:update')!({}, {}),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('security:rules:test evaluates a target against the rules (N33)', async () => {
+    await mockHandlers.get('security:rules:update')!(
+      {},
+      { rules: { fileDeny: ['/etc/**'] } },
+    )
+    const res = await mockHandlers.get('security:rules:test')!(
+      {},
+      { category: 'file', target: '/etc/passwd' },
+    )
+    expect(res.decision).toBe('deny')
+  })
+
+  test('security:rules:test rejects an invalid category', async () => {
+    await expect(
+      mockHandlers.get('security:rules:test')!(
+        {},
+        { category: 'bogus', target: '/x' },
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('security:runtime:install + uninstall toggle install state (N34)', async () => {
+    const handlers = await import('../main/ipc-handlers')
+    mockHandlers.clear()
+    handlers.__setSecurityProbeForTests(async () => 'Python 3.12.0')
+    handlers.registerIPCHandlers()
+
+    const installed = await mockHandlers.get('security:runtime:install')!(
+      {},
+      { id: 'python' },
+    )
+    expect(installed.success).toBe(true)
+    expect(installed.state.installed).toBe(true)
+    expect(installed.state.version).toBe('3.12.0')
+
+    const removed = await mockHandlers.get('security:runtime:uninstall')!(
+      {},
+      { id: 'python' },
+    )
+    expect(removed.success).toBe(true)
+    expect(removed.state.installed).toBe(false)
+  })
+
+  test('security:runtime:install rejects an unknown runtime id', async () => {
+    await expect(
+      mockHandlers.get('security:runtime:install')!({}, { id: 'ruby' }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
 })
 

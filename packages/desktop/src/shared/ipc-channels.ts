@@ -82,13 +82,23 @@ export type {
   DataSecurityState,
   RuntimeConfig,
   RuntimeState,
+  RuntimeId,
+  RuntimeInstallStatus,
   ExperimentalFeatures,
   SystemToolsMode,
   AuditLogEntry,
   AuditCategory,
   AuditDecision,
   AuditFilter,
+  AuditExportFormat,
 } from './security-center'
+
+export type {
+  SecurityRules,
+  NetworkRule,
+  RuleCategory,
+  RuleDecision,
+} from './security-rules'
 
 export type {
   UpdateState,
@@ -287,6 +297,12 @@ export const IPC_CHANNELS = {
   SECURITY_AUDIT_CLEAR: 'security:audit:clear',
   SECURITY_AUDIT_EXPORT: 'security:audit:export',
   SECURITY_CHANGED: 'security:changed', // push: main → renderer (policy/audit)
+
+  // Security sub-pages (N33–N35)
+  SECURITY_RULES_UPDATE: 'security:rules:update', // N33 file/command/network rules
+  SECURITY_RULES_TEST: 'security:rules:test', // N33 evaluate a target against rules
+  SECURITY_RUNTIME_INSTALL: 'security:runtime:install', // N34 install a runtime
+  SECURITY_RUNTIME_UNINSTALL: 'security:runtime:uninstall', // N34 uninstall a runtime
 
   // Permission (N17)
   PERMISSION_GET_MODE: 'permission:getMode',

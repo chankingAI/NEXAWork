@@ -22,18 +22,36 @@ import { execFile } from 'child_process'
 import {
   type AuditCategory,
   type AuditDecision,
+  type AuditExportFormat,
+  type AuditFilter,
   type AuditLogEntry,
   cloneConfig,
   DEFAULT_SECURITY_CONFIG,
+  extractToolTarget,
+  filterAuditLog,
   gateDecision,
   mergeSecurityConfig,
   normalizeSecurityConfig,
+  type RuntimeId,
+  type RuntimeState,
   type SecurityConfig,
   type SecurityConfigPatch,
-  serializeAuditLog,
+  serializeAudit,
   toolCategory,
 } from '../../shared/security-center'
+import {
+  evaluateOperation,
+  type RuleDecision,
+  type SecurityRules,
+} from '../../shared/security-rules'
 import { type Database, getDatabase } from './database'
+
+/** The command each runtime is probed with when (un)installing (N34). */
+const RUNTIME_PROBE: Record<RuntimeId, { command: string; args: string[] }> = {
+  python: { command: 'python3', args: ['--version'] },
+  node: { command: 'node', args: ['--version'] },
+  gitBash: { command: 'git', args: ['--version'] },
+}
 
 /** Probe a runtime's version string, or null when it is unavailable. */
 export type RuntimeProbe = (
@@ -119,9 +137,54 @@ export class SecurityManager {
    *  - `true`  → unguarded category; the tool may bypass the prompt.
    *  - `null`  → guarded category (or unknown tool); use the normal flow.
    */
-  gate(tool: string): boolean | null {
+  gate(tool: string, input?: unknown): boolean | null {
     const decision = gateDecision(this.config, tool)
-    return decision === 'allow' ? true : null
+    if (decision === null) return null
+    if (decision === 'allow') return true
+    // Guarded category: consult the N33 rules against the concrete target.
+    const category = toolCategory(tool)
+    if (
+      category === 'policy' ||
+      category === 'runtime' ||
+      category === 'data'
+    ) {
+      return null
+    }
+    if (!category) return null
+    const target = extractToolTarget(category, input)
+    if (!target) return null
+    const ruled = evaluateOperation(this.config.rules, category, target)
+    if (ruled === 'allow') return true
+    if (ruled === 'deny') return false
+    return null
+  }
+
+  /** Evaluate the N33 rules for an operation target (used by the rule tester). */
+  evaluateRule(
+    category: 'file' | 'command' | 'network',
+    target: string,
+  ): RuleDecision {
+    return evaluateOperation(this.config.rules, category, target)
+  }
+
+  /**
+   * Merge a partial rules patch (the N33 sub-pages), persist + audit it, and
+   * notify listeners. Rules are normalised (deduped / validated) by the merge.
+   */
+  setRules(patch: Partial<SecurityRules>): SecurityConfig {
+    const before = this.config.rules
+    this.config = mergeSecurityConfig(this.config, { rules: patch })
+    this.db.setSecurityConfig(this.config)
+    const after = this.config.rules
+    this.appendAudit({
+      category: 'policy',
+      action: 'rules:update',
+      decision: 'intercept',
+      detail: describeRuleChanges(before, after),
+      riskLevel: 'LOW',
+    })
+    this.emitChange()
+    return cloneConfig(this.config)
   }
 
   /**
@@ -179,9 +242,77 @@ export class SecurityManager {
     this.emitChange()
   }
 
-  /** Serialize the full audit log to a JSON export document. */
-  exportAudit(now: Date = new Date()): string {
-    return serializeAuditLog(this.db.listAuditLog(), now)
+  /**
+   * Serialize the audit log to an export document in the requested format,
+   * optionally restricted to a filter (time range / category / decision / text)
+   * — N35.
+   */
+  exportAudit(
+    format: AuditExportFormat = 'json',
+    filter?: AuditFilter,
+    now: Date = new Date(),
+  ): string {
+    const entries = filter
+      ? filterAuditLog(this.db.listAuditLog(), filter)
+      : this.db.listAuditLog()
+    return serializeAudit(entries, format, now)
+  }
+
+  // ─── Runtime install / uninstall (N34) ────────────────────────
+
+  /**
+   * "Install" a built-in runtime: probe the host for its binary and, when
+   * present, mark it installed + enabled with the detected version. A missing
+   * binary leaves it `not-installed`. (We never mutate system binaries; this
+   * provisions the runtime *within the app's* sandbox view.)
+   */
+  async installRuntime(id: RuntimeId): Promise<RuntimeState> {
+    this.patchRuntime(id, { status: 'installing' })
+    const { command, args } = RUNTIME_PROBE[id]
+    const version = extractVersion(await this.probe(command, args))
+    const next: Partial<RuntimeState> = version
+      ? { enabled: true, installed: true, status: 'installed', version }
+      : { enabled: false, installed: false, status: 'not-installed' }
+    const state = this.patchRuntime(id, next)
+    this.appendAudit({
+      category: 'runtime',
+      action: `runtime:install:${id}`,
+      decision: version ? 'allow' : 'deny',
+      detail: version ? `installed ${id} ${version}` : `${id} not available`,
+      riskLevel: 'LOW',
+    })
+    return state
+  }
+
+  /** "Uninstall" a runtime: disable it and clear its install state (N34). */
+  uninstallRuntime(id: RuntimeId): RuntimeState {
+    const state = this.patchRuntime(id, {
+      enabled: false,
+      installed: false,
+      status: 'not-installed',
+      version: undefined,
+    })
+    this.appendAudit({
+      category: 'runtime',
+      action: `runtime:uninstall:${id}`,
+      decision: 'intercept',
+      detail: `uninstalled ${id}`,
+      riskLevel: 'LOW',
+    })
+    return state
+  }
+
+  /** Apply a partial patch to a single runtime, persist + emit. */
+  private patchRuntime(
+    id: RuntimeId,
+    patch: Partial<RuntimeState>,
+  ): RuntimeState {
+    this.config = mergeSecurityConfig(this.config, {
+      runtimes: { [id]: patch },
+    })
+    this.db.setSecurityConfig(this.config)
+    this.emitChange()
+    return { ...this.config.runtimes[id] }
   }
 
   // ─── Runtime version probing ──────────────────────────────────
@@ -261,6 +392,22 @@ export class SecurityManager {
       riskLevel: 'LOW',
     })
   }
+}
+
+/** Short summary of a rules change (counts per list), for the audit detail. */
+export function describeRuleChanges(
+  before: SecurityRules,
+  after: SecurityRules,
+): string {
+  const parts: string[] = []
+  const note = (name: string, b: number, a: number) => {
+    if (b !== a) parts.push(`${name} ${b}→${a}`)
+  }
+  note('fileAllow', before.fileAllow.length, after.fileAllow.length)
+  note('fileDeny', before.fileDeny.length, after.fileDeny.length)
+  note('commandAllow', before.commandAllow.length, after.commandAllow.length)
+  note('network', before.network.length, after.network.length)
+  return parts.length > 0 ? parts.join('; ') : 'rules updated'
 }
 
 /** Human-readable diff of two policies (used for the audit detail). */

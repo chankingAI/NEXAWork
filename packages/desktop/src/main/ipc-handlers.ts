@@ -75,9 +75,15 @@ import {
   type SecurityManager,
 } from './backend/security-manager'
 import {
+  type AuditFilter,
   auditExportFilename,
+  type AuditExportFormat,
+  isAuditExportFormat,
+  type RuntimeId,
+  RUNTIME_IDS,
   type SecurityConfigPatch,
 } from '../shared/security-center'
+import type { RuleCategory, SecurityRules } from '../shared/security-rules'
 import {
   initUpdateManager,
   type Updater,
@@ -876,7 +882,9 @@ export function registerIPCHandlers(): void {
     ...(securityProbeOverride ? { probe: securityProbeOverride } : {}),
   })
   securityManager.onChanged(broadcastSecurityChanged)
-  permissionManager.setPolicyGate(tool => securityManager.gate(tool))
+  permissionManager.setPolicyGate((tool, input) =>
+    securityManager.gate(tool, input),
+  )
   permissionManager.setAuditSink(info => {
     securityManager.recordToolDecision(
       info.tool,
@@ -2093,14 +2101,78 @@ export function registerIPCHandlers(): void {
     return { success: true }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SECURITY_AUDIT_EXPORT, async () => {
-    const content = securityManager.exportAudit()
-    return {
-      content,
-      filename: auditExportFilename(),
-      byteLength: Buffer.byteLength(content, 'utf-8'),
-    }
-  })
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_AUDIT_EXPORT,
+    async (
+      _event,
+      input?: { format?: AuditExportFormat; filter?: AuditFilter },
+    ) => {
+      const format = isAuditExportFormat(input?.format) ? input.format : 'json'
+      const filter =
+        input?.filter && typeof input.filter === 'object'
+          ? input.filter
+          : undefined
+      const content = securityManager.exportAudit(format, filter)
+      return {
+        content,
+        filename: auditExportFilename(format),
+        format,
+        byteLength: Buffer.byteLength(content, 'utf-8'),
+      }
+    },
+  )
+
+  // === Security sub-pages (N33–N35) ===
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_RULES_UPDATE,
+    async (_event, input: { rules: Partial<SecurityRules> }) => {
+      if (!input || typeof input.rules !== 'object' || input.rules === null) {
+        throw createError('INVALID_INPUT', 'rules is required')
+      }
+      const config = securityManager.setRules(input.rules)
+      return { success: true, config }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_RULES_TEST,
+    async (_event, input: { category: RuleCategory; target: string }) => {
+      if (
+        !input ||
+        (input.category !== 'file' &&
+          input.category !== 'command' &&
+          input.category !== 'network') ||
+        typeof input.target !== 'string'
+      ) {
+        throw createError('INVALID_INPUT', 'category and target are required')
+      }
+      return {
+        decision: securityManager.evaluateRule(input.category, input.target),
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_RUNTIME_INSTALL,
+    async (_event, input: { id: RuntimeId }) => {
+      if (!input || !RUNTIME_IDS.includes(input.id)) {
+        throw createError('INVALID_INPUT', 'valid runtime id is required')
+      }
+      const state = await securityManager.installRuntime(input.id)
+      return { success: true, state }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_RUNTIME_UNINSTALL,
+    async (_event, input: { id: RuntimeId }) => {
+      if (!input || !RUNTIME_IDS.includes(input.id)) {
+        throw createError('INVALID_INPUT', 'valid runtime id is required')
+      }
+      const state = securityManager.uninstallRuntime(input.id)
+      return { success: true, state }
+    },
+  )
 
   // === Auto-update (N36) ===
   ipcMain.handle(IPC_CHANNELS.UPDATE_GET_STATE, async () =>

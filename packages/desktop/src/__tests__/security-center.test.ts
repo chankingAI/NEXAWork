@@ -5,13 +5,17 @@ import {
   cloneConfig,
   DEFAULT_SECURITY_CONFIG,
   effectiveSandbox,
+  extractToolTarget,
   filterAuditLog,
   gateDecision,
+  isAuditExportFormat,
   isValidSystemToolsMode,
   mergeSecurityConfig,
   normalizeSecurityConfig,
   type AuditLogEntry,
   type SecurityConfig,
+  serializeAudit,
+  serializeAuditCsv,
   serializeAuditLog,
   summarizeAudit,
   SYSTEM_TOOLS_MODES,
@@ -297,7 +301,99 @@ describe('serializeAuditLog', () => {
 
 describe('auditExportFilename', () => {
   test('builds a zero-padded timestamped filename', () => {
-    const name = auditExportFilename(new Date('2026-06-24T05:09:03'))
+    const name = auditExportFilename('json', new Date('2026-06-24T05:09:03'))
     expect(name).toBe('nexawork-audit-20260624-050903.json')
+  })
+
+  test('uses the csv extension for csv exports', () => {
+    const name = auditExportFilename('csv', new Date('2026-06-24T05:09:03'))
+    expect(name).toBe('nexawork-audit-20260624-050903.csv')
+  })
+})
+
+describe('filterAuditLog time range + search (N35)', () => {
+  const entries: AuditLogEntry[] = [
+    sampleAudit({
+      id: '1',
+      timestamp: '2026-06-24T01:00:00.000Z',
+      action: 'FileWriteTool',
+      detail: 'wrote alpha.txt',
+    }),
+    sampleAudit({
+      id: '2',
+      timestamp: '2026-06-24T05:00:00.000Z',
+      action: 'BashTool',
+      category: 'command',
+      detail: 'ran build',
+    }),
+    sampleAudit({
+      id: '3',
+      timestamp: '2026-06-24T09:00:00.000Z',
+      action: 'WebFetchTool',
+      category: 'network',
+      detail: 'GET alpha.io',
+    }),
+  ]
+
+  test('keeps only entries within [from, to]', () => {
+    const out = filterAuditLog(entries, {
+      from: '2026-06-24T02:00:00.000Z',
+      to: '2026-06-24T06:00:00.000Z',
+    })
+    expect(out.map(e => e.id)).toEqual(['2'])
+  })
+
+  test('free-text search matches action or detail (case-insensitive)', () => {
+    const out = filterAuditLog(entries, { search: 'ALPHA' })
+    expect(out.map(e => e.id).sort()).toEqual(['1', '3'])
+  })
+
+  test('combines category + search', () => {
+    const out = filterAuditLog(entries, {
+      category: 'network',
+      search: 'alpha',
+    })
+    expect(out.map(e => e.id)).toEqual(['3'])
+  })
+})
+
+describe('serializeAudit + CSV (N35)', () => {
+  test('serializeAuditCsv emits a header + one row per entry with RFC4180 quoting', () => {
+    const csv = serializeAuditCsv([
+      sampleAudit({ detail: 'has, comma and "quote"' }),
+    ])
+    const lines = csv.trim().split('\r\n')
+    expect(lines).toHaveLength(2)
+    expect(lines[0].split(',')[0]).toBe('id')
+    expect(lines[1]).toContain('"has, comma and ""quote"""')
+  })
+
+  test('serializeAudit dispatches by format', () => {
+    const entries = [sampleAudit()]
+    expect(serializeAudit(entries, 'csv')).toContain('id,timestamp')
+    expect(JSON.parse(serializeAudit(entries, 'json')).count).toBe(1)
+  })
+
+  test('isAuditExportFormat guards the format value', () => {
+    expect(isAuditExportFormat('json')).toBe(true)
+    expect(isAuditExportFormat('csv')).toBe(true)
+    expect(isAuditExportFormat('xml')).toBe(false)
+  })
+})
+
+describe('extractToolTarget (N33)', () => {
+  test('pulls the file path, command and URL by category', () => {
+    expect(extractToolTarget('file', { file_path: '/a/b.txt' })).toBe(
+      '/a/b.txt',
+    )
+    expect(extractToolTarget('command', { command: 'ls -la' })).toBe('ls -la')
+    expect(extractToolTarget('network', { url: 'https://x.io' })).toBe(
+      'https://x.io',
+    )
+  })
+
+  test('returns empty string when no recognisable target is present', () => {
+    expect(extractToolTarget('file', {})).toBe('')
+    expect(extractToolTarget('file', null)).toBe('')
   })
 })

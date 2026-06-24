@@ -174,7 +174,7 @@ describe('SecurityManager', () => {
     const { manager } = makeManager({ dir })
     manager.recordToolDecision('WebFetchTool', true, 'GET /', 'MEDIUM')
     const doc = JSON.parse(
-      manager.exportAudit(new Date('2026-06-24T00:00:00Z')),
+      manager.exportAudit('json', undefined, new Date('2026-06-24T00:00:00Z')),
     )
     expect(doc.kind).toBe('nexawork-audit-log')
     expect(doc.count).toBe(1)
@@ -297,5 +297,134 @@ describe('SecurityManager ↔ PermissionManager bridge', () => {
     expect(allowed).toBe(false)
     const entry = manager.listAudit().find(e => e.action === 'FileWriteTool')
     expect(entry?.decision).toBe('deny')
+  })
+
+  test('an N33 file allow rule lets a guarded category bypass the prompt', async () => {
+    const { manager } = makeManager({ dir })
+    const perms = new PermissionManager({ bypassAvailable: true })
+    perms.setPolicyGate((tool, input) => manager.gate(tool, input))
+    perms.setAuditSink(info =>
+      manager.recordToolDecision(
+        info.tool,
+        info.allowed,
+        info.detail,
+        info.riskLevel,
+      ),
+    )
+    manager.setRules({ fileAllow: ['/work/**'] })
+
+    const allowed = await perms.requestPermission(null, {
+      name: 'FileWriteTool',
+      input: { file_path: '/work/a.txt' },
+    })
+    expect(allowed).toBe(true)
+  })
+
+  test('an N33 file deny rule blocks the operation explicitly', async () => {
+    const { manager } = makeManager({ dir })
+    const perms = new PermissionManager({ bypassAvailable: true })
+    perms.setPolicyGate((tool, input) => manager.gate(tool, input))
+    perms.setAuditSink(info =>
+      manager.recordToolDecision(
+        info.tool,
+        info.allowed,
+        info.detail,
+        info.riskLevel,
+      ),
+    )
+    manager.setRules({ fileDeny: ['/etc/**'] })
+
+    const allowed = await perms.requestPermission(null, {
+      name: 'FileWriteTool',
+      input: { file_path: '/etc/passwd' },
+    })
+    expect(allowed).toBe(false)
+  })
+})
+
+describe('SecurityManager rules + runtime + export (N33–N35)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'nexa-n33-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('setRules normalises, persists and audits the change', () => {
+    const { manager, file } = makeManager({ dir })
+    const cfg = manager.setRules({
+      fileAllow: ['/a', '/a', ' /b '],
+      commandAllow: ['git'],
+    })
+    expect(cfg.rules.fileAllow).toEqual(['/a', '/b'])
+    expect(cfg.rules.commandAllow).toEqual(['git'])
+    const audit = manager.listAudit().find(e => e.action === 'rules:update')
+    expect(audit).toBeDefined()
+
+    // persisted across restart
+    const m2 = new SecurityManager({
+      db: new Database(file),
+      probeRuntimes: false,
+    })
+    expect(m2.getConfig().rules.fileAllow).toEqual(['/a', '/b'])
+  })
+
+  test('evaluateRule reflects the configured rules', () => {
+    const { manager } = makeManager({ dir })
+    manager.setRules({ fileDeny: ['/etc/**'], commandAllow: ['ls'] })
+    expect(manager.evaluateRule('file', '/etc/passwd')).toBe('deny')
+    expect(manager.evaluateRule('command', 'ls -la')).toBe('allow')
+    expect(manager.evaluateRule('network', 'https://x.io')).toBe('prompt')
+  })
+
+  test('installRuntime marks installed when the probe finds a binary', async () => {
+    const probe = async (cmd: string) =>
+      cmd === 'python3' ? 'Python 3.12.1' : null
+    const { manager } = makeManager({ dir, probe })
+    const state = await manager.installRuntime('python')
+    expect(state.installed).toBe(true)
+    expect(state.status).toBe('installed')
+    expect(state.version).toBe('3.12.1')
+    const audit = manager
+      .listAudit()
+      .find(e => e.action === 'runtime:install:python')
+    expect(audit?.decision).toBe('allow')
+  })
+
+  test('installRuntime leaves it not-installed when the binary is absent', async () => {
+    const { manager } = makeManager({ dir, probe: async () => null })
+    const state = await manager.installRuntime('node')
+    expect(state.installed).toBe(false)
+    expect(state.status).toBe('not-installed')
+  })
+
+  test('uninstallRuntime disables and clears install state', async () => {
+    const { manager } = makeManager({ dir, probe: async () => 'v20.0.0' })
+    await manager.installRuntime('node')
+    const state = manager.uninstallRuntime('node')
+    expect(state.installed).toBe(false)
+    expect(state.enabled).toBe(false)
+    expect(state.status).toBe('not-installed')
+    expect(state.version).toBeUndefined()
+  })
+
+  test('exportAudit honours a category filter and CSV format', () => {
+    const { manager } = makeManager({ dir })
+    manager.recordToolDecision('WebFetchTool', true, 'GET /', 'MEDIUM')
+    manager.recordToolDecision('FileWriteTool', false, '/etc/x', 'HIGH')
+
+    const json = JSON.parse(
+      manager.exportAudit('json', { category: 'network', decision: 'all' }),
+    )
+    expect(json.count).toBe(1)
+    expect(json.entries[0].category).toBe('network')
+
+    const csv = manager.exportAudit('csv', { category: 'all', decision: 'all' })
+    const lines = csv.trim().split('\n')
+    expect(lines[0]).toContain('category')
+    expect(lines).toHaveLength(3)
   })
 })
