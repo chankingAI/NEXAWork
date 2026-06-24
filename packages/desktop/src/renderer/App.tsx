@@ -19,6 +19,7 @@ import { RecordButton } from './components/RecordButton';
 import { RecordingStatusBar } from './components/RecordingStatusBar';
 import { RecordingCompletionDialog } from './components/RecordingCompletionDialog';
 import { RecordConfigPanel } from './components/RecordConfigPanel';
+import { ReplayPanel } from './components/ReplayPanel';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -192,6 +193,8 @@ export function App() {
                 onImportSkill={handleImportSkill}
                 onCreateSkill={handleCreateSkill}
               />
+            ) : activeNav === 'replay' ? (
+              <ReplayPanel />
             ) : activeNav === 'security' ? (
               <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
             ) : activeSessionId ? (

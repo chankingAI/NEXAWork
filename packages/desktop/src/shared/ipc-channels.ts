@@ -4,6 +4,17 @@
  * 63-method centralized handler registry (Codex pattern)
  */
 
+import type { ReplayReport, ReplayStatus } from './replay'
+
+export type {
+  ReplayReport,
+  ReplayStatus,
+  ReplayStep,
+  ReplayStepStatus,
+  ReplayState,
+  ReplaySpeed,
+} from './replay'
+
 export const IPC_CHANNELS = {
   // Chat
   CHAT_SEND: 'chat:send',
@@ -97,7 +108,20 @@ export const IPC_CHANNELS = {
   RECORD_DISCARD: 'record:discard',
   RECORD_GET_CONFIG: 'record:getConfig', // N25
   RECORD_SET_CONFIG: 'record:setConfig', // N25
+  RECORD_LIST: 'record:list', // N26
   RECORD_CHANGED: 'record:changed', // push: main → renderer
+
+  // Replay (N26)
+  REPLAY_LOAD: 'replay:load',
+  REPLAY_PLAY: 'replay:play',
+  REPLAY_PAUSE: 'replay:pause',
+  REPLAY_STEP: 'replay:step',
+  REPLAY_STOP: 'replay:stop',
+  REPLAY_SET_SPEED: 'replay:setSpeed',
+  REPLAY_STATUS: 'replay:status',
+  REPLAY_REPORT: 'replay:report',
+  REPLAY_CHANGED: 'replay:changed', // push: main → renderer
+  REPLAY_DONE: 'replay:done', // push: main → renderer (report ready)
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -452,9 +476,55 @@ export interface IPCRequestMap {
     input: Partial<RecordingConfig>
     output: RecordingConfig
   }
+  [IPC_CHANNELS.RECORD_LIST]: {
+    input: Record<string, never>
+    output: { recordings: RecordingSummary[] }
+  }
   [IPC_CHANNELS.RECORD_CHANGED]: {
     input: Record<string, never>
     output: RecorderStatus
+  }
+
+  // Replay (N26)
+  [IPC_CHANNELS.REPLAY_LOAD]: {
+    input: { recordingId: string }
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_PLAY]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_PAUSE]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STEP]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STOP]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_SET_SPEED]: {
+    input: { speed: number }
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_STATUS]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_REPORT]: {
+    input: Record<string, never>
+    output: { report: ReplayReport | null }
+  }
+  [IPC_CHANNELS.REPLAY_CHANGED]: {
+    input: Record<string, never>
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.REPLAY_DONE]: {
+    input: Record<string, never>
+    output: ReplayReport
   }
 
   // Window
@@ -746,6 +816,16 @@ export interface RecorderStatus {
   eventCount: number
   /** Active recording time in ms (paused spans excluded). */
   elapsedMs: number
+}
+
+/** Lightweight recording metadata for list views (N26 replay / N27 skills). */
+export interface RecordingSummary {
+  id: string
+  startTime: number
+  endTime: number
+  durationMs: number
+  eventCount: number
+  taskDescription?: string
 }
 
 /** Outcome returned when a recording stops; drives the completion dialog. */

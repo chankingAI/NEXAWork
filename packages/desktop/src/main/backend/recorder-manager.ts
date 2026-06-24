@@ -15,6 +15,7 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -213,6 +214,43 @@ export class RecorderManager {
     this.lastResult = result
     this.reset()
     return result
+  }
+
+  /**
+   * Load a persisted recording by id, or null when it is missing/unreadable.
+   * Used by the replay (N26) and skill (N27) layers.
+   */
+  loadRecording(id: string): RecordingFile | null {
+    if (!this.dir || !id) return null
+    const path = join(this.dir, `${id}.json`)
+    if (!existsSync(path)) return null
+    try {
+      return JSON.parse(readFileSync(path, 'utf-8')) as RecordingFile
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * List persisted recordings (newest first), parsed from the output dir.
+   * Returns an empty list when no dir is configured (in-memory/tests).
+   */
+  listRecordings(): RecordingFile[] {
+    if (!this.dir || !existsSync(this.dir)) return []
+    const files: RecordingFile[] = []
+    for (const name of readdirSync(this.dir)) {
+      if (!name.endsWith('.json') || name === CONFIG_FILENAME) continue
+      try {
+        files.push(
+          JSON.parse(
+            readFileSync(join(this.dir, name), 'utf-8'),
+          ) as RecordingFile,
+        )
+      } catch {
+        // Skip corrupt files rather than failing the whole listing.
+      }
+    }
+    return files.sort((a, b) => b.startTime - a.startTime)
   }
 
   /** Delete a persisted recording by id (used by the "discard" action). */

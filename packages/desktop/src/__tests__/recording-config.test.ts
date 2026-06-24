@@ -44,7 +44,6 @@ describe('coerceRecordingConfig', () => {
       maskPasswords: false,
       captureMouseTrail: true,
       elementCapture: false,
-      // @ts-expect-error intentionally wrong type
       mergeOperations: 'yes',
     })
     expect(c.maskPasswords).toBe(false)
@@ -55,7 +54,6 @@ describe('coerceRecordingConfig', () => {
 
   test('normalizes the window filter: trims, drops blanks, de-dupes', () => {
     const c = coerceRecordingConfig({
-      // @ts-expect-error mixed array on purpose
       windowFilter: ['  Chrome ', 'Chrome', '', '   ', 'Slack', 42],
     })
     expect(c.windowFilter).toEqual(['Chrome', 'Slack'])
