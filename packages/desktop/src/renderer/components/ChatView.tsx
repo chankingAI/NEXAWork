@@ -8,6 +8,8 @@ interface ChatViewProps {
   sessionId: string;
   /** Optional toolbar rendered in the input area (e.g. permission selector). */
   inputToolbar?: React.ReactNode;
+  /** Externally-supplied input prefill (e.g. "Ask AI about this" from the editor). */
+  draft?: { text: string; nonce: number } | null;
 }
 
 /**
@@ -18,7 +20,7 @@ interface ChatViewProps {
  * - "Completed" status indicator
  * - Reference links section
  */
-export function ChatView({ sessionId, inputToolbar }: ChatViewProps) {
+export function ChatView({ sessionId, inputToolbar, draft }: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -198,7 +200,7 @@ export function ChatView({ sessionId, inputToolbar }: ChatViewProps) {
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} onStop={handleStop} isLoading={isLoading} toolbar={inputToolbar} />
+      <ChatInput onSend={handleSend} onStop={handleStop} isLoading={isLoading} toolbar={inputToolbar} draft={draft} />
     </div>
   );
 }

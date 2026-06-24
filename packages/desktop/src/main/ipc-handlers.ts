@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, app } from 'electron'
-import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { isAbsolute, join, relative } from 'path'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { execFile } from 'child_process'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
@@ -43,6 +43,14 @@ import {
 } from './backend/recorder-manager'
 import { initReplayManager, type ReplayManager } from './backend/replay-manager'
 import { initSkillManager, type SkillManager } from './backend/skill-manager'
+import { initEditorManager, type EditorManager } from './backend/editor-manager'
+import {
+  detectLanguage,
+  type GitChange,
+  type GitChangeStatus,
+  type GitDiffData,
+  parseGitNameStatus,
+} from '../shared/editor'
 import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 import {
@@ -84,6 +92,8 @@ let replay: ReplayManager
 let replayTicker: ReturnType<typeof setInterval> | null = null
 // Recorded-skill catalog (N27).
 let recordedSkills: SkillManager
+// Code-editor file IO + tab-session persistence (N28).
+let editorManager: EditorManager
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -347,6 +357,138 @@ function gitInit(dir: string): Promise<void> {
   })
 }
 
+/** Resolve the editor tab-session persistence path, or null in tests (N28). */
+function resolveEditorStatePath(): string | null {
+  return resolveUserDataPath('editor-state.json')
+}
+
+/** Working directory for git operations (the renderer may override per-repo). */
+function resolveEditorCwd(cwd?: string): string {
+  if (cwd && cwd.trim()) return cwd
+  try {
+    return process.cwd()
+  } catch {
+    return '.'
+  }
+}
+
+interface GitExec {
+  stdout: string
+  stderr: string
+  code: number
+}
+
+/** Run a git command in `cwd`, resolving the exit code instead of throwing. */
+function runGit(args: string[], cwd: string): Promise<GitExec> {
+  return new Promise(resolve => {
+    execFile(
+      'git',
+      args,
+      { cwd, maxBuffer: 32 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const code =
+          err && typeof (err as { code?: unknown }).code === 'number'
+            ? (err as { code: number }).code
+            : err
+              ? 1
+              : 0
+        resolve({ stdout: stdout ?? '', stderr: stderr ?? '', code })
+      },
+    )
+  })
+}
+
+/** Resolve the repository root for `cwd`, or null when not a git repo (N28). */
+async function gitRepoRoot(cwd: string): Promise<string | null> {
+  const { stdout, code } = await runGit(['rev-parse', '--show-toplevel'], cwd)
+  if (code !== 0) return null
+  const root = stdout.trim()
+  return root || null
+}
+
+/**
+ * Collect working-tree changes vs HEAD (tracked) plus untracked files (N28).
+ * Paths are repo-root-relative, matching `git diff --name-status` output.
+ */
+async function gitChanges(
+  cwd: string,
+): Promise<{ repoRoot: string | null; changes: GitChange[] }> {
+  const repoRoot = await gitRepoRoot(cwd)
+  if (!repoRoot) return { repoRoot: null, changes: [] }
+
+  const tracked = await runGit(
+    ['-c', 'core.quotepath=false', 'diff', 'HEAD', '--name-status'],
+    repoRoot,
+  )
+  // `diff HEAD` fails on an empty repo (no commits); fall back to the index.
+  const trackedOut =
+    tracked.code === 0
+      ? tracked.stdout
+      : (
+          await runGit(
+            ['-c', 'core.quotepath=false', 'diff', '--cached', '--name-status'],
+            repoRoot,
+          )
+        ).stdout
+  const changes = parseGitNameStatus(trackedOut)
+
+  const seen = new Set(changes.map(c => c.path))
+  const untracked = await runGit(
+    ['ls-files', '--others', '--exclude-standard'],
+    repoRoot,
+  )
+  if (untracked.code === 0) {
+    for (const line of untracked.stdout.split('\n')) {
+      const p = line.trim()
+      if (p && !seen.has(p)) {
+        changes.push({ path: p, status: 'untracked', code: '?' })
+        seen.add(p)
+      }
+    }
+  }
+  return { repoRoot, changes }
+}
+
+/** Build Monaco DiffEditor data (HEAD vs working tree) for one file (N28). */
+async function gitDiffData(
+  path: string,
+  cwd: string,
+): Promise<GitDiffData | null> {
+  const repoRoot = await gitRepoRoot(cwd)
+  if (!repoRoot) return null
+
+  const rel = (isAbsolute(path) ? relative(repoRoot, path) : path).replace(
+    /\\/g,
+    '/',
+  )
+  const head = await runGit(['show', `HEAD:${rel}`], repoRoot)
+  const headExists = head.code === 0
+  const original = headExists ? head.stdout : ''
+
+  const abs = join(repoRoot, rel)
+  const fileExists = existsSync(abs)
+  let modified = ''
+  if (fileExists) {
+    try {
+      modified = readFileSync(abs, 'utf-8')
+    } catch {
+      modified = ''
+    }
+  }
+
+  let status: GitChangeStatus = 'modified'
+  if (!headExists && fileExists) status = 'added'
+  else if (headExists && !fileExists) status = 'deleted'
+
+  return {
+    path: rel,
+    status,
+    original,
+    modified,
+    language: detectLanguage(rel),
+  }
+}
+
 /**
  * Get API key from settings or environment
  */
@@ -546,6 +688,9 @@ export function registerIPCHandlers(): void {
 
   // Initialize the N27 recorded-skill catalog; bundles persist under userData.
   recordedSkills = initSkillManager({ dir: resolveRecordedSkillsDir() })
+
+  // Initialize the N28 code-editor manager (file IO + tab-session persistence).
+  editorManager = initEditorManager({ statePath: resolveEditorStatePath() })
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1425,6 +1570,72 @@ export function registerIPCHandlers(): void {
     IPC_CHANNELS.SKILL_RECORDED_EXPORT,
     async (_event, input: { id: string }) =>
       recordedSkills.exportSkill(input?.id ?? ''),
+  )
+
+  // === Code editor (N28) ===
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_READ_FILE,
+    async (_event, input: { path: string }) => {
+      if (!input?.path) {
+        throw createError('INVALID_INPUT', 'path is required')
+      }
+      try {
+        return editorManager.readFile(input.path)
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('READ_FAILED', e?.message ?? 'Failed to read file')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_WRITE_FILE,
+    async (_event, input: { path: string; content: string }) => {
+      if (!input?.path) {
+        throw createError('INVALID_INPUT', 'path is required')
+      }
+      try {
+        return editorManager.writeFile(input.path, input.content ?? '')
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('WRITE_FAILED', e?.message ?? 'Failed to write file')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_STAT_FILE,
+    async (_event, input: { path: string }) =>
+      editorManager.statFile(input?.path ?? ''),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.EDITOR_LOAD_STATE, async () =>
+    editorManager.loadState(),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_SAVE_STATE,
+    async (_event, input: { openPaths: string[]; activePath: string | null }) =>
+      editorManager.saveState({
+        openPaths: Array.isArray(input?.openPaths) ? input.openPaths : [],
+        activePath: input?.activePath ?? null,
+      }),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_GIT_CHANGES,
+    async (_event, input: { cwd?: string }) =>
+      gitChanges(resolveEditorCwd(input?.cwd)),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EDITOR_GIT_DIFF,
+    async (_event, input: { path: string; cwd?: string }) => {
+      if (!input?.path) {
+        throw createError('INVALID_INPUT', 'path is required')
+      }
+      return gitDiffData(input.path, resolveEditorCwd(input?.cwd))
+    },
   )
 
   // === Experts ===

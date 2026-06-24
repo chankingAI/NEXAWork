@@ -19,6 +19,8 @@ import type {
   IPCError,
   ChatMessage,
 } from '../../shared/ipc-channels'
+import { IPC_CHANNELS } from '../../shared/ipc-channels'
+import { extractEditedFilePath, isFileMutatingTool } from '../../shared/editor'
 import { permissionManager } from './permission-manager'
 
 // ===== Type Definitions =====
@@ -277,6 +279,21 @@ export function getHistory(
 
 // ===== Internal Helpers =====
 
+/**
+ * Push an editor open-file event so the renderer's CodeEditor reloads the file
+ * an AI tool just wrote and flash-highlights the changed lines (N28). The
+ * renderer computes the exact ranges by diffing its cached buffer against the
+ * new disk contents, so no range data is sent here.
+ */
+function notifyEditorFileChanged(
+  win: BrowserWindow | null,
+  path: string,
+): void {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(IPC_CHANNELS.EDITOR_OPEN_FILE, { path })
+  }
+}
+
 async function streamQueryAsync(
   engine: SessionEngine,
   streamId: string,
@@ -307,6 +324,9 @@ async function streamQueryAsync(
 
     let fullContent = ''
     let tokenCount = 0
+    // Track the file path each in-flight file-mutating tool targets so the
+    // editor can be told to open + highlight it once the write completes (N28).
+    const pendingEditPaths = new Map<string, string>()
 
     for await (const chunk of stream) {
       if (abortController.signal.aborted) break
@@ -317,18 +337,33 @@ async function streamQueryAsync(
           tokenCount++
           emitEvent({ type: 'token', data: chunk.text ?? '' })
           break
-        case 'tool_use_start':
+        case 'tool_use_start': {
+          const name = chunk.name ?? 'unknown'
+          if (isFileMutatingTool(name)) {
+            const path = extractEditedFilePath(chunk.input)
+            if (path) pendingEditPaths.set(name, path)
+          }
           emitEvent({
             type: 'tool_start',
-            data: { name: chunk.name ?? 'unknown', input: chunk.input ?? {} },
+            data: { name, input: chunk.input ?? {} },
           })
           break
-        case 'tool_use_result':
+        }
+        case 'tool_use_result': {
+          const name = chunk.name ?? 'unknown'
+          if (isFileMutatingTool(name)) {
+            const path = pendingEditPaths.get(name)
+            if (path) {
+              pendingEditPaths.delete(name)
+              notifyEditorFileChanged(win, path)
+            }
+          }
           emitEvent({
             type: 'tool_result',
-            data: { name: chunk.name ?? 'unknown', output: chunk.output ?? '' },
+            data: { name, output: chunk.output ?? '' },
           })
           break
+        }
       }
     }
 
