@@ -42,6 +42,7 @@ import {
   type RecorderManager,
 } from './backend/recorder-manager'
 import { initReplayManager, type ReplayManager } from './backend/replay-manager'
+import { initSkillManager, type SkillManager } from './backend/skill-manager'
 import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 import {
@@ -81,6 +82,8 @@ let recordTicker: ReturnType<typeof setInterval> | null = null
 // Replay controller + its step-advance timer (N26).
 let replay: ReplayManager
 let replayTicker: ReturnType<typeof setInterval> | null = null
+// Recorded-skill catalog (N27).
+let recordedSkills: SkillManager
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -198,6 +201,16 @@ function broadcastReplayDone(): void {
   }
 }
 
+/** Push the live recorded-skill summary list to every renderer window (N27). */
+function broadcastSkillChanged(): void {
+  const skills = recordedSkills.list()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.SKILL_RECORDED_CHANGED, { skills })
+    }
+  }
+}
+
 /** Start the timer that advances replay steps and pushes status (N26). */
 function startReplayTicker(): void {
   if (replayTicker) return
@@ -271,6 +284,11 @@ function resolveUserDataPath(fileName: string): string | null {
 /** Resolve the directory recordings are written to, or null in tests (N24). */
 function resolveRecordingsDir(): string | null {
   return resolveUserDataPath('recordings')
+}
+
+/** Resolve the `.claude/skills` directory, or null in tests (N27). */
+function resolveRecordedSkillsDir(): string | null {
+  return resolveUserDataPath(join('.claude', 'skills'))
 }
 
 /**
@@ -525,6 +543,9 @@ export function registerIPCHandlers(): void {
   // Initialize the N26 replay controller (drives the ReplayPanel).
   stopReplayTicker()
   replay = initReplayManager()
+
+  // Initialize the N27 recorded-skill catalog; bundles persist under userData.
+  recordedSkills = initSkillManager({ dir: resolveRecordedSkillsDir() })
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1194,6 +1215,217 @@ export function registerIPCHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.REPLAY_REPORT, async () => ({
     report: replay.getReport(),
   }))
+
+  // === Recorded skills (N27) ===
+  ipcMain.handle(IPC_CHANNELS.SKILL_RECORDED_LIST, async () => ({
+    skills: recordedSkills.list(),
+  }))
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_GET,
+    async (_event, input: { id: string }) => ({
+      skill: recordedSkills.get(input?.id ?? ''),
+    }),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_ANALYZE,
+    async (_event, input: { recordingId: string }) => {
+      if (!input?.recordingId) {
+        throw createError('INVALID_INPUT', 'recordingId is required')
+      }
+      const file = recorder.loadRecording(input.recordingId)
+      if (!file) {
+        return { analysis: null }
+      }
+      return { analysis: recordedSkills.analyzeRecording(file) }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_CREATE,
+    async (
+      _event,
+      input: {
+        recordingId: string
+        name: string
+        description?: string
+        icon?: string
+        tags?: string[]
+        whenToUse?: string
+        variables?: import('../shared/skill').SkillVariable[]
+      },
+    ) => {
+      if (!input?.recordingId) {
+        throw createError('INVALID_INPUT', 'recordingId is required')
+      }
+      const file = recorder.loadRecording(input.recordingId)
+      if (!file) {
+        throw createError(
+          'NOT_FOUND',
+          `Recording ${input.recordingId} not found`,
+        )
+      }
+      const skill = recordedSkills.createFromRecording(file, input)
+      broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_UPDATE,
+    async (
+      _event,
+      input: {
+        id: string
+        name?: string
+        description?: string
+        icon?: string
+        tags?: string[]
+        whenToUse?: string
+        variables?: import('../shared/skill').SkillVariable[]
+      },
+    ) => {
+      const { id, ...patch } = input ?? { id: '' }
+      const skill = recordedSkills.update(id, patch)
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_REORDER,
+    async (
+      _event,
+      input: { id: string; fromIndex: number; toIndex: number },
+    ) => {
+      const skill = recordedSkills.reorderSteps(
+        input?.id ?? '',
+        input?.fromIndex ?? 0,
+        input?.toIndex ?? 0,
+      )
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_UPDATE_STEP,
+    async (
+      _event,
+      input: {
+        id: string
+        stepId: string
+        detail?: string
+        description?: string
+        waitMs?: number
+      },
+    ) => {
+      const { id, stepId, ...patch } = input ?? { id: '', stepId: '' }
+      const skill = recordedSkills.updateStep(id, stepId, patch)
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_REMOVE_STEP,
+    async (_event, input: { id: string; stepId: string }) => {
+      const skill = recordedSkills.removeStep(
+        input?.id ?? '',
+        input?.stepId ?? '',
+      )
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_ADD_WAIT,
+    async (
+      _event,
+      input: { id: string; afterIndex: number; waitMs?: number },
+    ) => {
+      const skill = recordedSkills.addWaitStep(
+        input?.id ?? '',
+        input?.afterIndex ?? 0,
+        input?.waitMs,
+      )
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_DUPLICATE,
+    async (_event, input: { id: string }) => {
+      const skill = recordedSkills.duplicate(input?.id ?? '')
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_DELETE,
+    async (_event, input: { id: string }) => {
+      const ok = recordedSkills.delete(input?.id ?? '')
+      if (ok) broadcastSkillChanged()
+      return { ok }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_EXECUTE,
+    async (_event, input: { id: string; params: Record<string, string> }) => {
+      if (!input?.id) {
+        throw createError('INVALID_INPUT', 'id is required')
+      }
+      const file = recordedSkills.buildExecution(input.id, input.params ?? {})
+      if (!file) {
+        throw createError('NOT_FOUND', `Skill ${input.id} not found`)
+      }
+      stopReplayTicker()
+      const status = replay.load(file)
+      const playing = replay.play()
+      startReplayTicker()
+      broadcastReplayChanged()
+      return playing ?? status
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_RECORD_EXEC,
+    async (
+      _event,
+      input: {
+        id: string
+        startedAt: number
+        finishedAt: number
+        durationMs: number
+        success: boolean
+        params: Record<string, string>
+        error?: string
+      },
+    ) => {
+      const { id, ...record } = input ?? {
+        id: '',
+        startedAt: 0,
+        finishedAt: 0,
+        durationMs: 0,
+        success: false,
+        params: {},
+      }
+      const skill = recordedSkills.recordExecution(id, record)
+      if (skill) broadcastSkillChanged()
+      return { skill }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SKILL_RECORDED_EXPORT,
+    async (_event, input: { id: string }) =>
+      recordedSkills.exportSkill(input?.id ?? ''),
+  )
 
   // === Experts ===
   ipcMain.handle(

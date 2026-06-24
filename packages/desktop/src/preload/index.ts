@@ -18,6 +18,8 @@ import type {
   RecordingSummary,
   ReplayReport,
   ReplayStatus,
+  SkillSummary,
+  SkillVariable,
 } from '../shared/ipc-channels'
 
 /**
@@ -326,6 +328,72 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.REPLAY_DONE, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.REPLAY_DONE, handler)
+      }
+    },
+  },
+
+  // === Recorded skills (N27) ===
+  recordedSkill: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_LIST, {}),
+    get: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_GET, input),
+    analyze: (input: { recordingId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_ANALYZE, input),
+    create: (input: {
+      recordingId: string
+      name: string
+      description?: string
+      icon?: string
+      tags?: string[]
+      whenToUse?: string
+      variables?: SkillVariable[]
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_CREATE, input),
+    update: (input: {
+      id: string
+      name?: string
+      description?: string
+      icon?: string
+      tags?: string[]
+      whenToUse?: string
+      variables?: SkillVariable[]
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_UPDATE, input),
+    reorderSteps: (input: { id: string; fromIndex: number; toIndex: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_REORDER, input),
+    updateStep: (input: {
+      id: string
+      stepId: string
+      detail?: string
+      description?: string
+      waitMs?: number
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_UPDATE_STEP, input),
+    removeStep: (input: { id: string; stepId: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_REMOVE_STEP, input),
+    addWaitStep: (input: { id: string; afterIndex: number; waitMs?: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_ADD_WAIT, input),
+    duplicate: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_DUPLICATE, input),
+    delete: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_DELETE, input),
+    execute: (input: { id: string; params: Record<string, string> }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_EXECUTE, input),
+    recordExecution: (input: {
+      id: string
+      startedAt: number
+      finishedAt: number
+      durationMs: number
+      success: boolean
+      params: Record<string, string>
+      error?: string
+    }) => ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_RECORD_EXEC, input),
+    export: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.SKILL_RECORDED_EXPORT, input),
+
+    onChanged: (callback: (data: { skills: SkillSummary[] }) => void) => {
+      const handler = (_: unknown, data: { skills: SkillSummary[] }) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.SKILL_RECORDED_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.SKILL_RECORDED_CHANGED, handler)
       }
     },
   },

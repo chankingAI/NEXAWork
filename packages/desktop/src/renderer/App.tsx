@@ -20,6 +20,8 @@ import { RecordingStatusBar } from './components/RecordingStatusBar';
 import { RecordingCompletionDialog } from './components/RecordingCompletionDialog';
 import { RecordConfigPanel } from './components/RecordConfigPanel';
 import { ReplayPanel } from './components/ReplayPanel';
+import { RecordedSkillPanel } from './components/RecordedSkillPanel';
+import { SkillGenerateDialog } from './components/SkillGenerateDialog';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export function App() {
   const permission = usePermission();
   const recorder = useRecorder();
   const [showRecordConfig, setShowRecordConfig] = useState(false);
+  const [generateRecordingId, setGenerateRecordingId] = useState<string | null>(null);
 
   const handleOpenRecordConfig = useCallback(() => {
     setShowRecordConfig(true);
@@ -193,6 +196,8 @@ export function App() {
                 onImportSkill={handleImportSkill}
                 onCreateSkill={handleCreateSkill}
               />
+            ) : activeNav === 'recordedSkills' ? (
+              <RecordedSkillPanel onExecuted={() => setActiveNav('replay')} />
             ) : activeNav === 'replay' ? (
               <ReplayPanel />
             ) : activeNav === 'security' ? (
@@ -234,9 +239,24 @@ export function App() {
       {recorder.lastResult && (
         <RecordingCompletionDialog
           result={recorder.lastResult}
-          onGenerateSkill={recorder.clearResult}
+          onGenerateSkill={() => {
+            if (recorder.lastResult) setGenerateRecordingId(recorder.lastResult.id);
+            recorder.clearResult();
+          }}
           onSaveRecording={recorder.clearResult}
           onDiscard={handleDiscardRecording}
+        />
+      )}
+
+      {/* Generate-skill-from-recording dialog (N27) */}
+      {generateRecordingId && (
+        <SkillGenerateDialog
+          recordingId={generateRecordingId}
+          onClose={() => setGenerateRecordingId(null)}
+          onGenerated={() => {
+            setGenerateRecordingId(null);
+            setActiveNav('recordedSkills');
+          }}
         />
       )}
     </div>
