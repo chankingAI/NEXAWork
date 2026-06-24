@@ -54,6 +54,11 @@ import {
   type FileBrowserManager,
   type WatchFn,
 } from './backend/file-browser-manager'
+import {
+  initGitManager,
+  type GitManager,
+  type GitRunner,
+} from './backend/git-manager'
 import type { FileNodeKind } from '../shared/file-tree'
 import {
   detectLanguage,
@@ -115,6 +120,15 @@ let fileWatchOverride: WatchFn | null = null
 /** @internal Test-only: override the fs watcher factory (null = real fs.watch). */
 export function __setFileWatchForTests(fn: WatchFn | null): void {
   fileWatchOverride = fn
+}
+// Git status panel + diff viewer: shells out to `git`, watches .git (N31).
+let gitManager: GitManager
+// Test seam: lets unit tests inject a fake git runner before registration so no
+// real `git` process is spawned.
+let gitRunnerOverride: GitRunner | null = null
+/** @internal Test-only: override the git invoker (null = real execFile git). */
+export function __setGitRunnerForTests(fn: GitRunner | null): void {
+  gitRunnerOverride = fn
 }
 // Test seam: lets unit tests inject a fake PTY spawner before registration so
 // the native node-pty binding (which cannot load under `bun test`) is avoided.
@@ -255,6 +269,15 @@ function broadcastFileChanged(dir: string): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.FILE_CHANGED, { dir })
+    }
+  }
+}
+
+/** Push a git working-tree-change notification to every renderer window (N31). */
+function broadcastGitChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.GIT_CHANGED, {})
     }
   }
 }
@@ -765,6 +788,16 @@ export function registerIPCHandlers(): void {
     fileWatchOverride ? { watch: fileWatchOverride } : {},
   )
   fileBrowserManager.onChanged(broadcastFileChanged)
+
+  // Initialize the N31 git manager (status / branches / staging / commit /
+  // push-pull + diff). Tear down any prior watchers on re-registration, then
+  // forward .git / working-tree change events to renderer windows.
+  gitManager?.dispose()
+  gitManager = initGitManager({
+    ...(gitRunnerOverride ? { runner: gitRunnerOverride } : {}),
+    ...(fileWatchOverride ? { watch: fileWatchOverride } : {}),
+  })
+  gitManager.onChanged(broadcastGitChanged)
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1809,6 +1842,123 @@ export function registerIPCHandlers(): void {
         root: input?.root,
         limit: input?.limit,
       }),
+  )
+
+  // === Git panel + diff (N31) ===
+  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, async () => gitManager.status())
+
+  ipcMain.handle(IPC_CHANNELS.GIT_BRANCHES, async () => gitManager.branches())
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_STAGE,
+    async (_event, input: { paths: string[] }) =>
+      gitManager.stage(input?.paths ?? []),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_UNSTAGE,
+    async (_event, input: { paths: string[] }) =>
+      gitManager.unstage(input?.paths ?? []),
+  )
+
+  ipcMain.handle(IPC_CHANNELS.GIT_STAGE_ALL, async () => gitManager.stageAll())
+
+  ipcMain.handle(IPC_CHANNELS.GIT_UNSTAGE_ALL, async () =>
+    gitManager.unstageAll(),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_DISCARD,
+    async (_event, input: { path: string }) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      return gitManager.discard(input.path)
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_STAGE_HUNK,
+    async (_event, input: { patch: string }) => {
+      if (!input?.patch) throw createError('INVALID_INPUT', 'patch is required')
+      return gitManager.stageHunk(input.patch)
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_UNSTAGE_HUNK,
+    async (_event, input: { patch: string }) => {
+      if (!input?.patch) throw createError('INVALID_INPUT', 'patch is required')
+      return gitManager.unstageHunk(input.patch)
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_COMMIT,
+    async (_event, input: { message: string }) => {
+      if (!input?.message?.trim()) {
+        throw createError('INVALID_INPUT', 'commit message is required')
+      }
+      return gitManager.commit(input.message)
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.GIT_PUSH, async () => gitManager.push())
+
+  ipcMain.handle(IPC_CHANNELS.GIT_PULL, async () => gitManager.pull())
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_COMMIT_PUSH,
+    async (_event, input: { message: string }) => {
+      if (!input?.message?.trim()) {
+        throw createError('INVALID_INPUT', 'commit message is required')
+      }
+      return gitManager.commitAndPush(input.message)
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_CREATE_BRANCH,
+    async (_event, input: { name: string }) => {
+      if (!input?.name?.trim()) {
+        throw createError('INVALID_INPUT', 'branch name is required')
+      }
+      return gitManager.createBranch(input.name.trim())
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_CHECKOUT,
+    async (_event, input: { name: string }) => {
+      if (!input?.name?.trim()) {
+        throw createError('INVALID_INPUT', 'branch name is required')
+      }
+      return gitManager.checkout(input.name.trim())
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_MERGE,
+    async (_event, input: { name: string }) => {
+      if (!input?.name?.trim()) {
+        throw createError('INVALID_INPUT', 'branch name is required')
+      }
+      return gitManager.merge(input.name.trim())
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_DIFF,
+    async (_event, input: { path: string; staged?: boolean }) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      return gitManager.diff(input.path, { staged: input.staged })
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_DIFF_HUNKS,
+    async (_event, input: { path: string; staged?: boolean }) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      return gitManager.diffHunks(input.path, { staged: input.staged })
+    },
   )
 
   // === Terminal (N29) ===

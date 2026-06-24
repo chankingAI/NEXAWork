@@ -29,6 +29,7 @@ import {
   Wand2,
   FileCode,
   TerminalSquare,
+  GitBranch,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ export type NavigationId =
   | 'replay'
   | 'editor'
   | 'terminal'
+  | 'git'
   | 'automation'
   | 'security'
   | 'more'
@@ -94,6 +96,7 @@ const navItems: NavItemConfig[] = [
   { id: 'replay', label: '回放', icon: <PlayCircle size={18} /> },
   { id: 'editor', label: '编辑器', icon: <FileCode size={18} /> },
   { id: 'terminal', label: '终端', icon: <TerminalSquare size={18} /> },
+  { id: 'git', label: '源代码管理', icon: <GitBranch size={18} /> },
   { id: 'automation', label: '自动化', icon: <Zap size={18} /> },
   { id: 'security', label: '安全', icon: <Shield size={18} /> },
   {
