@@ -31,6 +31,7 @@ import type {
   SecurityConfig,
   SecurityConfigPatch,
   AuditLogEntry,
+  UpdateState,
 } from '../shared/ipc-channels'
 
 interface GitMutationResult {
@@ -621,6 +622,26 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.SECURITY_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.SECURITY_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Auto-update (N36) ===
+  update: {
+    check: (): Promise<UpdateState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK, {}),
+    download: (): Promise<UpdateState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD, {}),
+    install: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL, {}),
+    getState: (): Promise<UpdateState> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATE, {}),
+
+    onChanged: (callback: (state: UpdateState) => void) => {
+      const handler = (_event: unknown, state: UpdateState) => callback(state)
+      ipcRenderer.on(IPC_CHANNELS.UPDATE_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_CHANGED, handler)
       }
     },
   },
