@@ -21,6 +21,7 @@ import type {
   SkillSummary,
   SkillVariable,
   EditorPersistState,
+  TerminalSessionInfo,
 } from '../shared/ipc-channels'
 
 /**
@@ -420,6 +421,53 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.EDITOR_OPEN_FILE, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.EDITOR_OPEN_FILE, handler)
+      }
+    },
+  },
+
+  // === Terminal (N29) ===
+  terminal: {
+    create: (input?: {
+      shell?: string
+      cwd?: string
+      cols?: number
+      rows?: number
+      title?: string
+    }): Promise<TerminalSessionInfo> =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, input ?? {}),
+    write: (input: { id: string; data: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_WRITE, input),
+    resize: (input: { id: string; cols: number; rows: number }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, input),
+    kill: (input: { id: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_KILL, input),
+    list: (): Promise<{ sessions: TerminalSessionInfo[] }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_LIST, {}),
+
+    onData: (callback: (data: { id: string; data: string }) => void) => {
+      const handler = (_: unknown, data: { id: string; data: string }) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.TERMINAL_DATA, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_DATA, handler)
+      }
+    },
+    onExit: (callback: (data: { id: string; exitCode: number }) => void) => {
+      const handler = (_: unknown, data: { id: string; exitCode: number }) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.TERMINAL_EXIT, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_EXIT, handler)
+      }
+    },
+    onAiCommand: (
+      callback: (data: { command: string; cwd?: string }) => void,
+    ) => {
+      const handler = (_: unknown, data: { command: string; cwd?: string }) =>
+        callback(data)
+      ipcRenderer.on(IPC_CHANNELS.TERMINAL_AI_COMMAND, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_AI_COMMAND, handler)
       }
     },
   },

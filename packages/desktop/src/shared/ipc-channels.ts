@@ -11,6 +11,7 @@ import type {
   LineRange,
 } from './editor'
 import type { ReplayReport, ReplayStatus } from './replay'
+import type { TerminalSessionInfo } from './terminal'
 import type {
   RecordingAnalysis,
   RecordedSkill,
@@ -48,6 +49,12 @@ export type {
   GitDiffData,
   LineRange,
 } from './editor'
+
+export type {
+  TerminalSessionInfo,
+  TerminalShellKind,
+  ResolvedShell,
+} from './terminal'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -183,6 +190,16 @@ export const IPC_CHANNELS = {
   EDITOR_GIT_CHANGES: 'editor:gitChanges',
   EDITOR_GIT_DIFF: 'editor:gitDiff',
   EDITOR_OPEN_FILE: 'editor:openFile', // push: main → renderer (AI-driven open)
+
+  // Terminal (N29)
+  TERMINAL_CREATE: 'terminal:create',
+  TERMINAL_WRITE: 'terminal:write',
+  TERMINAL_RESIZE: 'terminal:resize',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_LIST: 'terminal:list',
+  TERMINAL_DATA: 'terminal:data', // push: main → renderer (PTY stdout)
+  TERMINAL_EXIT: 'terminal:exit', // push: main → renderer (PTY exit)
+  TERMINAL_AI_COMMAND: 'terminal:aiCommand', // push: AI shell command echo
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -725,6 +742,46 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.EDITOR_OPEN_FILE]: {
     input: Record<string, never>
     output: { path: string; highlightRanges?: LineRange[] }
+  }
+
+  // Terminal (N29)
+  [IPC_CHANNELS.TERMINAL_CREATE]: {
+    input: {
+      shell?: string
+      cwd?: string
+      cols?: number
+      rows?: number
+      title?: string
+    }
+    output: TerminalSessionInfo
+  }
+  [IPC_CHANNELS.TERMINAL_WRITE]: {
+    input: { id: string; data: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.TERMINAL_RESIZE]: {
+    input: { id: string; cols: number; rows: number }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.TERMINAL_KILL]: {
+    input: { id: string }
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.TERMINAL_LIST]: {
+    input: Record<string, never>
+    output: { sessions: TerminalSessionInfo[] }
+  }
+  [IPC_CHANNELS.TERMINAL_DATA]: {
+    input: Record<string, never>
+    output: { id: string; data: string }
+  }
+  [IPC_CHANNELS.TERMINAL_EXIT]: {
+    input: Record<string, never>
+    output: { id: string; exitCode: number }
+  }
+  [IPC_CHANNELS.TERMINAL_AI_COMMAND]: {
+    input: Record<string, never>
+    output: { command: string; cwd?: string }
   }
 
   // Window

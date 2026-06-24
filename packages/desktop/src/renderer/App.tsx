@@ -23,6 +23,7 @@ import { ReplayPanel } from './components/ReplayPanel';
 import { RecordedSkillPanel } from './components/RecordedSkillPanel';
 import { SkillGenerateDialog } from './components/SkillGenerateDialog';
 import { EditorPage } from './components/EditorPage';
+import { TerminalPanel } from './components/TerminalPanel';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -212,6 +213,8 @@ export function App() {
               <ReplayPanel />
             ) : activeNav === 'editor' ? (
               <EditorPage onAskAi={handleAskAi} />
+            ) : activeNav === 'terminal' ? (
+              <TerminalPanel />
             ) : activeNav === 'security' ? (
               <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
             ) : activeSessionId ? (

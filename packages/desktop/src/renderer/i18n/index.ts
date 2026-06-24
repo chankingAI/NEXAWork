@@ -376,6 +376,15 @@ const zhCN = {
   'editor.diff.comments': '评论',
   'editor.diff.commentPrompt': '输入行内评论：',
   'editor.diff.removeComment': '删除评论',
+  'terminal.title': '终端',
+  'terminal.subtitle': '内置 PTY 终端，可执行命令并查看输出',
+  'terminal.newTab': '新建终端',
+  'terminal.closeTab': '关闭终端',
+  'terminal.empty.title': '暂无终端',
+  'terminal.empty.desc': '点击「新建终端」开启一个 shell 会话',
+  'terminal.empty.create': '新建终端',
+  'terminal.exited': '已退出 (代码 {code})',
+  'terminal.unavailable': '终端在当前环境不可用',
 } as const
 
 export type MessageKey = keyof typeof zhCN
@@ -744,6 +753,15 @@ const en: Messages = {
   'editor.diff.comments': 'Comments',
   'editor.diff.commentPrompt': 'Enter an inline comment:',
   'editor.diff.removeComment': 'Remove comment',
+  'terminal.title': 'Terminal',
+  'terminal.subtitle': 'Built-in PTY terminal — run commands and view output',
+  'terminal.newTab': 'New terminal',
+  'terminal.closeTab': 'Close terminal',
+  'terminal.empty.title': 'No terminals',
+  'terminal.empty.desc': 'Click "New terminal" to start a shell session',
+  'terminal.empty.create': 'New terminal',
+  'terminal.exited': 'Exited (code {code})',
+  'terminal.unavailable': 'Terminal is unavailable in this environment',
 }
 
 const ja: Messages = {
@@ -1117,6 +1135,16 @@ const ja: Messages = {
   'editor.diff.comments': 'コメント',
   'editor.diff.commentPrompt': 'インラインコメントを入力：',
   'editor.diff.removeComment': 'コメントを削除',
+  'terminal.title': 'ターミナル',
+  'terminal.subtitle': '組み込み PTY ターミナル — コマンドを実行し出力を表示',
+  'terminal.newTab': '新しいターミナル',
+  'terminal.closeTab': 'ターミナルを閉じる',
+  'terminal.empty.title': 'ターミナルがありません',
+  'terminal.empty.desc':
+    '「新しいターミナル」をクリックしてシェルセッションを開始',
+  'terminal.empty.create': '新しいターミナル',
+  'terminal.exited': '終了しました (コード {code})',
+  'terminal.unavailable': 'この環境ではターミナルを利用できません',
 }
 
 const DICTIONARIES: Record<LanguageCode, Messages> = {

@@ -1,7 +1,11 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import type {
+  PtyProcess,
+  PtySpawnOptions,
+} from '../main/backend/terminal-manager'
 
 /**
  * IPC Handlers Unit Tests
@@ -184,6 +188,13 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('editor:gitChanges')
     expect(registeredChannels).toContain('editor:gitDiff')
 
+    // Terminal (5: N29; terminal:data/exit/aiCommand are push-only)
+    expect(registeredChannels).toContain('terminal:create')
+    expect(registeredChannels).toContain('terminal:write')
+    expect(registeredChannels).toContain('terminal:resize')
+    expect(registeredChannels).toContain('terminal:kill')
+    expect(registeredChannels).toContain('terminal:list')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
@@ -199,8 +210,9 @@ describe('IPC Handler Registration', () => {
     // + 8 data (N23) + 9 record (6 N24 + 2 N25 config + 1 N26 list)
     // + 8 replay (N26) + 14 recorded skill (N27)
     // + 7 editor (N28: read/write/stat/loadState/saveState/gitChanges/gitDiff)
-    // + 4 window + 2 app = 106
-    expect(mockHandlers.size).toBe(106)
+    // + 5 terminal (N29: create/write/resize/kill/list)
+    // + 4 window + 2 app = 111
+    expect(mockHandlers.size).toBe(111)
   })
 })
 
@@ -1403,5 +1415,120 @@ describe('Handler Logic: Code editor (N28)', () => {
   test('editor:gitDiff rejects when path is missing', async () => {
     const diff = mockHandlers.get('editor:gitDiff')!
     await expect(diff({}, {})).rejects.toBeDefined()
+  })
+})
+
+/**
+ * N29 terminal handler-level coverage. A fake PTY is injected via the
+ * `__setTerminalSpawnForTests` seam before registration so the native node-pty
+ * binding is never loaded; the invoke handlers are then driven directly to
+ * verify spawn → session, stdin/resize routing, kill, and list snapshots.
+ */
+describe('Handler Logic: Terminal (N29)', () => {
+  const spawned: FakeHandlerPty[] = []
+
+  class FakeHandlerPty implements PtyProcess {
+    written: string[] = []
+    size: { cols: number; rows: number } | null = null
+    killed = false
+    private exitCb: ((e: { exitCode: number }) => void) | null = null
+    constructor(public readonly opts: PtySpawnOptions) {}
+    write(data: string): void {
+      this.written.push(data)
+    }
+    resize(cols: number, rows: number): void {
+      this.size = { cols, rows }
+    }
+    kill(): void {
+      this.killed = true
+    }
+    onData(): void {}
+    onExit(cb: (e: { exitCode: number }) => void): void {
+      this.exitCb = cb
+    }
+    emitExit(code: number): void {
+      this.exitCb?.({ exitCode: code })
+    }
+  }
+
+  beforeEach(async () => {
+    spawned.length = 0
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setTerminalSpawnForTests(opts => {
+      const pty = new FakeHandlerPty(opts)
+      spawned.push(pty)
+      return pty
+    })
+    handlers.registerIPCHandlers()
+  })
+
+  afterAll(async () => {
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setTerminalSpawnForTests(null)
+  })
+
+  test('terminal:create spawns a PTY and returns running metadata', async () => {
+    const info = await mockHandlers.get('terminal:create')!(
+      {},
+      { cols: 100, rows: 30 },
+    )
+    expect(info.id).toBeDefined()
+    expect(info.status).toBe('running')
+    expect(info.cols).toBe(100)
+    expect(info.rows).toBe(30)
+    expect(spawned).toHaveLength(1)
+  })
+
+  test('terminal:write forwards stdin to the PTY', async () => {
+    const info = await mockHandlers.get('terminal:create')!({}, {})
+    const res = await mockHandlers.get('terminal:write')!(
+      {},
+      { id: info.id, data: 'echo hi\n' },
+    )
+    expect(res.success).toBe(true)
+    expect(spawned[0].written).toEqual(['echo hi\n'])
+  })
+
+  test('terminal:write rejects when id is missing', async () => {
+    await expect(
+      mockHandlers.get('terminal:write')!({}, { data: 'x' }),
+    ).rejects.toBeDefined()
+  })
+
+  test('terminal:resize clamps and forwards new dimensions', async () => {
+    const info = await mockHandlers.get('terminal:create')!({}, {})
+    const res = await mockHandlers.get('terminal:resize')!(
+      {},
+      { id: info.id, cols: 0, rows: 99999 },
+    )
+    expect(res.success).toBe(true)
+    expect(spawned[0].size).toEqual({ cols: 2, rows: 1000 })
+  })
+
+  test('terminal:list reflects created and killed sessions', async () => {
+    const a = await mockHandlers.get('terminal:create')!({}, {})
+    await mockHandlers.get('terminal:create')!({}, {})
+    let listed = await mockHandlers.get('terminal:list')!({})
+    expect(listed.sessions).toHaveLength(2)
+
+    const killed = await mockHandlers.get('terminal:kill')!({}, { id: a.id })
+    expect(killed.success).toBe(true)
+    expect(spawned[0].killed).toBe(true)
+
+    listed = await mockHandlers.get('terminal:list')!({})
+    expect(listed.sessions).toHaveLength(1)
+    expect(listed.sessions.map((s: { id: string }) => s.id)).not.toContain(a.id)
+  })
+
+  test('terminal:write returns success=false after the PTY exits', async () => {
+    const info = await mockHandlers.get('terminal:create')!({}, {})
+    spawned[0].emitExit(0)
+    const res = await mockHandlers.get('terminal:write')!(
+      {},
+      { id: info.id, data: 'x' },
+    )
+    expect(res.success).toBe(false)
   })
 })
