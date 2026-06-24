@@ -3,6 +3,7 @@ import {
   test,
   expect,
   beforeEach,
+  beforeAll,
   afterEach,
   afterAll,
   mock,
@@ -48,6 +49,13 @@ mock.module('electron', () => ({
   },
   shell: { openExternal: () => Promise.resolve() },
 }))
+
+// Pin the N32 runtime-version probe to a no-op fake for the whole file so
+// registering handlers never spawns a real `python3` / `node` process.
+beforeAll(async () => {
+  const handlers = await import('../main/ipc-handlers')
+  handlers.__setSecurityProbeForTests(async () => null)
+})
 
 describe('IPC Handler Registration', () => {
   beforeEach(() => {
@@ -233,6 +241,13 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('git:diff')
     expect(registeredChannels).toContain('git:diffHunks')
 
+    // Security center (5: N32; security:changed is push-only)
+    expect(registeredChannels).toContain('security:getConfig')
+    expect(registeredChannels).toContain('security:updateConfig')
+    expect(registeredChannels).toContain('security:audit:list')
+    expect(registeredChannels).toContain('security:audit:clear')
+    expect(registeredChannels).toContain('security:audit:export')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
@@ -253,8 +268,10 @@ describe('IPC Handler Registration', () => {
     // + 18 git panel (N31: status/branches/stage/unstage/stageAll/unstageAll/
     //   discard/stageHunk/unstageHunk/commit/push/pull/commitPush/createBranch/
     //   checkout/merge/diff/diffHunks; git:changed is push-only)
-    // + 4 window + 2 app = 136
-    expect(mockHandlers.size).toBe(136)
+    // + 5 security (N32: getConfig/updateConfig/audit:list/audit:clear/
+    //   audit:export; security:changed is push-only)
+    // + 4 window + 2 app = 141
+    expect(mockHandlers.size).toBe(141)
   })
 })
 
@@ -1829,5 +1846,120 @@ describe('Handler Logic: Git panel (N31)', () => {
       { path: 'a.txt' },
     )
     expect(parsed.hunks.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * N32 security-center handler logic. The runtime probe is pinned to a no-op by
+ * the file-level beforeAll, so registration uses an in-memory Database (the
+ * mocked `app` exposes no userData path). This exercises the IPC handler →
+ * SecurityManager → Database pipeline: policy read / patch, audit list / clear /
+ * export, and input validation.
+ */
+describe('Handler Logic: Security center (N32)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setFileWatchForTests(() => ({ close: () => {} }))
+    handlers.__setSecurityProbeForTests(async () => null)
+    handlers.registerIPCHandlers()
+  })
+
+  test('security:getConfig returns the default policy', async () => {
+    const config = await mockHandlers.get('security:getConfig')!({})
+    expect(config.sandbox.enabled).toBe(true)
+    expect(config.sandbox.fileSecurity).toBe(true)
+    expect(config.dataSecurity.encryption).toBe(true)
+    expect(config.systemTools).toBe('readonly')
+    expect(config.runtimes.python.enabled).toBe(true)
+  })
+
+  test('security:updateConfig merges a nested patch and persists it', async () => {
+    const res = await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { sandbox: { fileSecurity: false }, systemTools: 'full' } },
+    )
+    expect(res.success).toBe(true)
+    expect(res.config.sandbox.fileSecurity).toBe(false)
+    // sibling sub-policies are preserved
+    expect(res.config.sandbox.commandSecurity).toBe(true)
+    expect(res.config.systemTools).toBe('full')
+
+    const reread = await mockHandlers.get('security:getConfig')!({})
+    expect(reread.sandbox.fileSecurity).toBe(false)
+    expect(reread.systemTools).toBe('full')
+  })
+
+  test('security:updateConfig rejects a missing patch', async () => {
+    await expect(
+      mockHandlers.get('security:updateConfig')!({}, {}),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('a policy change records an audit entry', async () => {
+    await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { sandbox: { networkSecurity: false } } },
+    )
+    const { entries } = await mockHandlers.get('security:audit:list')!({})
+    expect(entries.length).toBeGreaterThan(0)
+    const latest = entries[0]
+    expect(latest.action).toBe('policy:update')
+    expect(latest.decision).toBe('intercept')
+    expect(latest.detail).toContain('sandbox.network=off')
+  })
+
+  test('a no-op patch records nothing', async () => {
+    const before = await mockHandlers.get('security:audit:list')!({})
+    await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { sandbox: { enabled: true } } },
+    )
+    const after = await mockHandlers.get('security:audit:list')!({})
+    expect(after.entries.length).toBe(before.entries.length)
+  })
+
+  test('security:audit:list honours a limit', async () => {
+    for (const mode of ['full', 'readonly', 'disabled', 'full'] as const) {
+      await mockHandlers.get('security:updateConfig')!(
+        {},
+        { patch: { systemTools: mode } },
+      )
+    }
+    const limited = await mockHandlers.get('security:audit:list')!(
+      {},
+      { limit: 2 },
+    )
+    expect(limited.entries.length).toBe(2)
+  })
+
+  test('security:audit:export returns a JSON document + filename', async () => {
+    await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { dataSecurity: { gateway: false } } },
+    )
+    const res = await mockHandlers.get('security:audit:export')!({})
+    expect(res.filename).toMatch(/^nexawork-audit-\d{8}-\d{6}\.json$/)
+    expect(res.byteLength).toBeGreaterThan(0)
+    const parsed = JSON.parse(res.content)
+    expect(parsed.kind).toBe('nexawork-audit-log')
+    expect(parsed.count).toBe(parsed.entries.length)
+    expect(parsed.entries.length).toBeGreaterThan(0)
+  })
+
+  test('security:audit:clear empties the log', async () => {
+    await mockHandlers.get('security:updateConfig')!(
+      {},
+      { patch: { experimental: { versionManagement: true } } },
+    )
+    expect(
+      (await mockHandlers.get('security:audit:list')!({})).entries.length,
+    ).toBeGreaterThan(0)
+    const cleared = await mockHandlers.get('security:audit:clear')!({})
+    expect(cleared.success).toBe(true)
+    expect(
+      (await mockHandlers.get('security:audit:list')!({})).entries.length,
+    ).toBe(0)
   })
 })

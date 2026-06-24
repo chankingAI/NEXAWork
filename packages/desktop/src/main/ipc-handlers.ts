@@ -70,6 +70,15 @@ import {
 import { DEFAULT_SETTINGS, coerceSettings } from '../shared/settings'
 import { permissionManager } from './backend/permission-manager'
 import {
+  initSecurityManager,
+  type RuntimeProbe,
+  type SecurityManager,
+} from './backend/security-manager'
+import {
+  auditExportFilename,
+  type SecurityConfigPatch,
+} from '../shared/security-center'
+import {
   type DataSnapshot,
   type ExportFormat,
   type ExportScope,
@@ -120,6 +129,15 @@ let fileWatchOverride: WatchFn | null = null
 /** @internal Test-only: override the fs watcher factory (null = real fs.watch). */
 export function __setFileWatchForTests(fn: WatchFn | null): void {
   fileWatchOverride = fn
+}
+// Security center: sandbox policy + audit log, bridges permissions (N32).
+let securityManager: SecurityManager
+// Test seam: lets unit tests inject a fake runtime-version probe before
+// registration so no real `python3` / `node` process is spawned.
+let securityProbeOverride: RuntimeProbe | null = null
+/** @internal Test-only: override the runtime-version probe (null = real execFile). */
+export function __setSecurityProbeForTests(fn: RuntimeProbe | null): void {
+  securityProbeOverride = fn
 }
 // Git status panel + diff viewer: shells out to `git`, watches .git (N31).
 let gitManager: GitManager
@@ -278,6 +296,15 @@ function broadcastGitChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.GIT_CHANGED, {})
+    }
+  }
+}
+
+/** Push a security-center change (policy or audit) to every window (N32). */
+function broadcastSecurityChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.SECURITY_CHANGED, {})
     }
   }
 }
@@ -798,6 +825,27 @@ export function registerIPCHandlers(): void {
     ...(fileWatchOverride ? { watch: fileWatchOverride } : {}),
   })
   gitManager.onChanged(broadcastGitChanged)
+
+  // Initialize the N32 security manager (sandbox policy + audit log), persisted
+  // through the Database. Bridge it into the permissions system: the sandbox
+  // policy gates the permission flow and every decision is mirrored into the
+  // audit log.
+  securityManager?.dispose()
+  securityManager = initSecurityManager({
+    db,
+    ...(securityProbeOverride ? { probe: securityProbeOverride } : {}),
+  })
+  securityManager.onChanged(broadcastSecurityChanged)
+  permissionManager.setPolicyGate(tool => securityManager.gate(tool))
+  permissionManager.setAuditSink(info => {
+    securityManager.recordToolDecision(
+      info.tool,
+      info.allowed,
+      info.detail,
+      info.riskLevel,
+    )
+  })
+
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1960,6 +2008,47 @@ export function registerIPCHandlers(): void {
       return gitManager.diffHunks(input.path, { staged: input.staged })
     },
   )
+
+  // === Security center (N32) ===
+  ipcMain.handle(IPC_CHANNELS.SECURITY_GET_CONFIG, async () =>
+    securityManager.getConfig(),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_UPDATE_CONFIG,
+    async (_event, input: { patch: SecurityConfigPatch }) => {
+      if (!input || typeof input.patch !== 'object' || input.patch === null) {
+        throw createError('INVALID_INPUT', 'patch is required')
+      }
+      const config = securityManager.updateConfig(input.patch)
+      return { success: true, config }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SECURITY_AUDIT_LIST,
+    async (_event, input: { limit?: number }) => {
+      const limit =
+        typeof input?.limit === 'number' && input.limit > 0
+          ? Math.floor(input.limit)
+          : undefined
+      return { entries: securityManager.listAudit(limit) }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.SECURITY_AUDIT_CLEAR, async () => {
+    securityManager.clearAudit()
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SECURITY_AUDIT_EXPORT, async () => {
+    const content = securityManager.exportAudit()
+    return {
+      content,
+      filename: auditExportFilename(),
+      byteLength: Buffer.byteLength(content, 'utf-8'),
+    }
+  })
 
   // === Terminal (N29) ===
   ipcMain.handle(

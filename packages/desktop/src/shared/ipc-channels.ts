@@ -15,6 +15,11 @@ import type { TerminalSessionInfo } from './terminal'
 import type { FileEntry, FileNodeKind } from './file-tree'
 import type { GitBranchInfo, GitFileState, ParsedFileDiff } from './git-panel'
 import type {
+  AuditLogEntry,
+  SecurityConfig,
+  SecurityConfigPatch,
+} from './security-center'
+import type {
   RecordingAnalysis,
   RecordedSkill,
   SkillSummary,
@@ -68,6 +73,21 @@ export type {
   DiffHunk,
   ParsedFileDiff,
 } from './git-panel'
+
+export type {
+  SecurityConfig,
+  SecurityConfigPatch,
+  SandboxPolicy,
+  DataSecurityState,
+  RuntimeConfig,
+  RuntimeState,
+  ExperimentalFeatures,
+  SystemToolsMode,
+  AuditLogEntry,
+  AuditCategory,
+  AuditDecision,
+  AuditFilter,
+} from './security-center'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -250,6 +270,14 @@ export const IPC_CHANNELS = {
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
+
+  // Security center (N32)
+  SECURITY_GET_CONFIG: 'security:getConfig',
+  SECURITY_UPDATE_CONFIG: 'security:updateConfig',
+  SECURITY_AUDIT_LIST: 'security:audit:list',
+  SECURITY_AUDIT_CLEAR: 'security:audit:clear',
+  SECURITY_AUDIT_EXPORT: 'security:audit:export',
+  SECURITY_CHANGED: 'security:changed', // push: main → renderer (policy/audit)
 
   // Permission (N17)
   PERMISSION_GET_MODE: 'permission:getMode',
@@ -973,6 +1001,32 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.WINDOW_IS_MAXIMIZED]: {
     input: Record<string, never>
     output: boolean
+  }
+
+  // Security center (N32)
+  [IPC_CHANNELS.SECURITY_GET_CONFIG]: {
+    input: Record<string, never>
+    output: SecurityConfig
+  }
+  [IPC_CHANNELS.SECURITY_UPDATE_CONFIG]: {
+    input: { patch: SecurityConfigPatch }
+    output: { success: boolean; config: SecurityConfig }
+  }
+  [IPC_CHANNELS.SECURITY_AUDIT_LIST]: {
+    input: { limit?: number }
+    output: { entries: AuditLogEntry[] }
+  }
+  [IPC_CHANNELS.SECURITY_AUDIT_CLEAR]: {
+    input: Record<string, never>
+    output: { success: boolean }
+  }
+  [IPC_CHANNELS.SECURITY_AUDIT_EXPORT]: {
+    input: Record<string, never>
+    output: { content: string; filename: string; byteLength: number }
+  }
+  [IPC_CHANNELS.SECURITY_CHANGED]: {
+    input: Record<string, never>
+    output: Record<string, never>
   }
 
   // Permission (N17)
