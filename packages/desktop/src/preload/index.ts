@@ -14,6 +14,7 @@ import type {
   ExportFormat,
   ConflictStrategy,
   RecorderStatus,
+  RecordingConfig,
 } from '../shared/ipc-channels'
 
 /**
@@ -282,6 +283,9 @@ const nexaworkAPI = {
 
     discard: (input: { id: string }) =>
       ipcRenderer.invoke(IPC_CHANNELS.RECORD_DISCARD, input),
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.RECORD_GET_CONFIG, {}),
+    setConfig: (input: Partial<RecordingConfig>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.RECORD_SET_CONFIG, input),
 
     onChanged: (callback: (status: RecorderStatus) => void) => {
       const handler = (_: unknown, data: RecorderStatus) => callback(data)

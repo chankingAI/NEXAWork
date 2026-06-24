@@ -18,6 +18,7 @@ import { useRecorder } from './hooks/useRecorder';
 import { RecordButton } from './components/RecordButton';
 import { RecordingStatusBar } from './components/RecordingStatusBar';
 import { RecordingCompletionDialog } from './components/RecordingCompletionDialog';
+import { RecordConfigPanel } from './components/RecordConfigPanel';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -31,8 +32,14 @@ export function App() {
   useSettings();
   const permission = usePermission();
   const recorder = useRecorder();
+  const [showRecordConfig, setShowRecordConfig] = useState(false);
+
+  const handleOpenRecordConfig = useCallback(() => {
+    setShowRecordConfig(true);
+  }, []);
 
   const handleStartRecording = useCallback(() => {
+    setShowRecordConfig(false);
     void recorder.start();
   }, [recorder.start]);
 
@@ -136,7 +143,7 @@ export function App() {
               onResume={recorder.resume}
               onStop={handleStopRecording}
             />
-            <RecordButton status={recorder.status} onStart={handleStartRecording} onStop={handleStopRecording} />
+            <RecordButton status={recorder.status} onStart={handleOpenRecordConfig} onStop={handleStopRecording} />
           </>
         }
       />
@@ -208,6 +215,16 @@ export function App() {
       {/* Global tool permission prompt */}
       {permission.activeRequest && (
         <PermissionConfirmDialog request={permission.activeRequest} onRespond={permission.respond} />
+      )}
+
+      {/* Recording configuration panel (N25) */}
+      {showRecordConfig && recorder.status.state === 'idle' && (
+        <RecordConfigPanel
+          config={recorder.config}
+          onChangeConfig={patch => void recorder.setConfig(patch)}
+          onStart={handleStartRecording}
+          onClose={() => setShowRecordConfig(false)}
+        />
       )}
 
       {/* Recording completion dialog (N24) */}

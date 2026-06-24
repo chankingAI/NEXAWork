@@ -17,6 +17,7 @@ import type {
   DesktopPermissionMode,
   PermissionDecisionAction,
   PermissionScope,
+  RecordingConfig,
 } from '../shared/ipc-channels'
 import { computeNextRun, parseSchedule } from '../shared/schedule'
 import { PROJECT_TEMPLATES, getTemplate } from '../shared/project-templates'
@@ -152,6 +153,11 @@ function startRecordTicker(): void {
   if (recordTicker) return
   recordTicker = setInterval(() => {
     if (recorder.isActive()) {
+      // Enforce the N25 max-duration auto-stop threshold.
+      if (recorder.shouldAutoStop()) {
+        recorder.stop()
+        stopRecordTicker()
+      }
       broadcastRecordingChanged()
     } else {
       stopRecordTicker()
@@ -1047,6 +1053,16 @@ export function registerIPCHandlers(): void {
       if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
       return { success: recorder.discard(input.id) }
     },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.RECORD_GET_CONFIG, async () =>
+    recorder.getConfig(),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.RECORD_SET_CONFIG,
+    async (_event, input: Partial<RecordingConfig> = {}) =>
+      recorder.setConfig(input ?? {}),
   )
 
   // === Experts ===

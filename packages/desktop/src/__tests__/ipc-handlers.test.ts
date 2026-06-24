@@ -135,28 +135,30 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('data:backup')
     expect(registeredChannels).toContain('data:restore')
 
-    // Recording (6: N24; RECORD_CHANGED is push-only)
+    // Recording (8: N24 + N25 config; RECORD_CHANGED is push-only)
     expect(registeredChannels).toContain('record:start')
     expect(registeredChannels).toContain('record:pause')
     expect(registeredChannels).toContain('record:resume')
     expect(registeredChannels).toContain('record:stop')
     expect(registeredChannels).toContain('record:status')
     expect(registeredChannels).toContain('record:discard')
+    expect(registeredChannels).toContain('record:getConfig')
+    expect(registeredChannels).toContain('record:setConfig')
 
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 74 channels registered', async () => {
+  test('total handler count: 76 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
     registerIPCHandlers()
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
-    // + 8 data (N23) + 6 record (N24) + 4 window + 2 app = 74
-    expect(mockHandlers.size).toBe(74)
+    // + 8 data (N23) + 8 record (6 N24 + 2 N25 config) + 4 window + 2 app = 76
+    expect(mockHandlers.size).toBe(76)
   })
 })
 
@@ -1036,5 +1038,39 @@ describe('Handler Logic: Recording (N24)', () => {
     const discard = mockHandlers.get('record:discard')!
     const result = await discard({}, { id: 'rec_missing' })
     expect(typeof result.success).toBe('boolean')
+  })
+
+  test('record:getConfig returns a fully-populated config', async () => {
+    const getConfig = mockHandlers.get('record:getConfig')!
+    const config = await getConfig({})
+    expect(config.mode).toBeTruthy()
+    expect(config.screenshotFrequency).toBeTruthy()
+    expect(typeof config.maskPasswords).toBe('boolean')
+    expect(Array.isArray(config.windowFilter)).toBe(true)
+    expect(typeof config.maxDurationMs).toBe('number')
+  })
+
+  test('record:setConfig persists a patch and getConfig reflects it', async () => {
+    const setConfig = mockHandlers.get('record:setConfig')!
+    const getConfig = mockHandlers.get('record:getConfig')!
+    const updated = await setConfig(
+      {},
+      { mode: 'hybrid', maskPasswords: false, windowFilter: ['Chrome'] },
+    )
+    expect(updated.mode).toBe('hybrid')
+    expect(updated.maskPasswords).toBe(false)
+    const roundTrip = await getConfig({})
+    expect(roundTrip.mode).toBe('hybrid')
+    expect(roundTrip.maskPasswords).toBe(false)
+    expect(roundTrip.windowFilter).toEqual(['Chrome'])
+    // restore the default so later tests are not affected
+    await setConfig({}, { mode: 'cdp', maskPasswords: true, windowFilter: [] })
+  })
+
+  test('record:setConfig normalizes malformed input defensively', async () => {
+    const setConfig = mockHandlers.get('record:setConfig')!
+    const updated = await setConfig({}, { mode: 'bogus', maxDurationMs: -10 })
+    expect(['cdp', 'desktop', 'hybrid']).toContain(updated.mode)
+    expect(updated.maxDurationMs).toBeGreaterThanOrEqual(0)
   })
 })

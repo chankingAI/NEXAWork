@@ -95,6 +95,8 @@ export const IPC_CHANNELS = {
   RECORD_RESUME: 'record:resume',
   RECORD_STATUS: 'record:status',
   RECORD_DISCARD: 'record:discard',
+  RECORD_GET_CONFIG: 'record:getConfig', // N25
+  RECORD_SET_CONFIG: 'record:setConfig', // N25
   RECORD_CHANGED: 'record:changed', // push: main → renderer
 
   // Window
@@ -442,6 +444,14 @@ export interface IPCRequestMap {
     input: { id: string }
     output: { success: boolean }
   }
+  [IPC_CHANNELS.RECORD_GET_CONFIG]: {
+    input: Record<string, never>
+    output: RecordingConfig
+  }
+  [IPC_CHANNELS.RECORD_SET_CONFIG]: {
+    input: Partial<RecordingConfig>
+    output: RecordingConfig
+  }
   [IPC_CHANNELS.RECORD_CHANGED]: {
     input: Record<string, never>
     output: RecorderStatus
@@ -745,6 +755,37 @@ export interface RecordStopResult {
   eventCount: number
   /** Path the recording JSON was written to, or null when not persisted. */
   outputPath: string | null
+}
+
+// --- Recording configuration (N25) ---
+
+/** Which recorder backend captures the session. */
+export type RecordMode = 'cdp' | 'desktop' | 'hybrid'
+
+/** How often screenshots are captured during a recording. */
+export type ScreenshotFrequency = 'on-action' | 'every-3s' | 'every-5s'
+
+/**
+ * Pre-recording configuration chosen in the RecordConfigPanel (N25). Persisted
+ * across sessions and applied when the next recording starts.
+ */
+export interface RecordingConfig {
+  /** Recorder backend: browser (CDP), desktop, or both. */
+  mode: RecordMode
+  /** Screenshot cadence. */
+  screenshotFrequency: ScreenshotFrequency
+  /** Auto-mask password-field input so secrets never reach disk. */
+  maskPasswords: boolean
+  /** App/window titles to record; empty means capture everything. */
+  windowFilter: string[]
+  /** Whether to record fine-grained mouse_move events (mouse trail). */
+  captureMouseTrail: boolean
+  /** Advanced: enable UI Automation element identification. */
+  elementCapture: boolean
+  /** Advanced: merge consecutive keystrokes / scroll into single steps. */
+  mergeOperations: boolean
+  /** Advanced: auto-stop threshold in ms; 0 disables the limit. */
+  maxDurationMs: number
 }
 
 // --- Stream Events ---

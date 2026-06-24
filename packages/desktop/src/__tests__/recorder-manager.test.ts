@@ -12,6 +12,10 @@ import {
   initRecorderManager,
   getRecorderManager,
 } from '../main/backend/recorder-manager'
+import {
+  DEFAULT_RECORDING_CONFIG,
+  MASK_PLACEHOLDER,
+} from '../shared/recording-config'
 
 /** A controllable clock so elapsed-time assertions are deterministic. */
 function makeClock(start = 1_000) {
@@ -186,6 +190,120 @@ describe('RecorderManager persistence', () => {
     r.start()
     const result = r.stop()
     expect(result.outputPath).toBeNull()
+  })
+})
+
+describe('RecorderManager configuration (N25)', () => {
+  test('defaults to the factory config when nothing is persisted', () => {
+    const r = new RecorderManager({ dir: null })
+    expect(r.getConfig()).toEqual(DEFAULT_RECORDING_CONFIG)
+  })
+
+  test('getConfig returns a defensive copy of the window filter', () => {
+    const r = new RecorderManager({ dir: null })
+    r.setConfig({ windowFilter: ['Chrome'] })
+    const a = r.getConfig()
+    a.windowFilter.push('mutated')
+    expect(r.getConfig().windowFilter).toEqual(['Chrome'])
+  })
+
+  test('setConfig merges a partial patch and normalizes it', () => {
+    const r = new RecorderManager({ dir: null })
+    r.setConfig({ mode: 'hybrid' })
+    r.setConfig({ maskPasswords: false, windowFilter: [' Slack ', 'Slack'] })
+    const c = r.getConfig()
+    expect(c.mode).toBe('hybrid')
+    expect(c.maskPasswords).toBe(false)
+    expect(c.windowFilter).toEqual(['Slack'])
+  })
+
+  test('config persists across manager instances pointing at the same dir', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nexawork-cfg-'))
+    try {
+      const a = new RecorderManager({ dir })
+      a.setConfig({ mode: 'desktop', maxDurationMs: 30_000 })
+      const b = new RecorderManager({ dir })
+      expect(b.getConfig().mode).toBe('desktop')
+      expect(b.getConfig().maxDurationMs).toBe(30_000)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('active recording snapshots config — later edits do not affect it', () => {
+    const r = new RecorderManager({ dir: null })
+    r.setConfig({ captureMouseTrail: false })
+    r.start()
+    // Flip the persisted config mid-recording.
+    r.setConfig({ captureMouseTrail: true })
+    r.recordAction('mouse_move', '10,20')
+    // The active snapshot still drops mouse_move.
+    expect(r.getStatus().eventCount).toBe(0)
+  })
+
+  test('drops mouse_move events unless the active config opts in', () => {
+    const trail = new RecorderManager({ dir: null })
+    trail.setConfig({ captureMouseTrail: true })
+    trail.start()
+    trail.recordAction('mouse_move', '1,2')
+    trail.recordAction('click', 'btn')
+    expect(trail.getStatus().eventCount).toBe(2)
+
+    const noTrail = new RecorderManager({ dir: null })
+    noTrail.setConfig({ captureMouseTrail: false })
+    noTrail.start()
+    noTrail.recordAction('mouse_move', '1,2')
+    noTrail.recordAction('click', 'btn')
+    expect(noTrail.getStatus().eventCount).toBe(1)
+  })
+
+  test('masks sensitive detail when password protection is on', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nexawork-mask-'))
+    try {
+      const r = new RecorderManager({ dir, generateId: () => 'rec_mask' })
+      r.setConfig({ maskPasswords: true })
+      r.start()
+      r.recordAction('type', 'hunter2', { sensitive: true })
+      r.recordAction('type', 'visible', { sensitive: false })
+      const result = r.stop()
+      const parsed = JSON.parse(
+        readFileSync(result.outputPath as string, 'utf-8'),
+      )
+      expect(parsed.events[0].detail).toBe(MASK_PLACEHOLDER)
+      expect(parsed.events[1].detail).toBe('visible')
+      expect(parsed.config.maskPasswords).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('keeps sensitive detail intact when masking is off', () => {
+    const r = new RecorderManager({ dir: null })
+    r.setConfig({ maskPasswords: false })
+    r.start()
+    r.recordAction('type', 'hunter2', { sensitive: true })
+    expect(r.getStatus().eventCount).toBe(1)
+  })
+
+  test('shouldAutoStop honors the configured max duration', () => {
+    const clock = makeClock()
+    const r = new RecorderManager({ dir: null, now: clock.now })
+    r.setConfig({ maxDurationMs: 5_000 })
+    expect(r.shouldAutoStop()).toBe(false) // idle
+    r.start()
+    clock.advance(4_000)
+    expect(r.shouldAutoStop()).toBe(false)
+    clock.advance(1_000)
+    expect(r.shouldAutoStop()).toBe(true)
+  })
+
+  test('shouldAutoStop is always false without a limit', () => {
+    const clock = makeClock()
+    const r = new RecorderManager({ dir: null, now: clock.now })
+    r.setConfig({ maxDurationMs: 0 })
+    r.start()
+    clock.advance(10_000_000)
+    expect(r.shouldAutoStop()).toBe(false)
   })
 })
 
