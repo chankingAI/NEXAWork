@@ -13,6 +13,7 @@ import type {
 import type { ReplayReport, ReplayStatus } from './replay'
 import type { TerminalSessionInfo } from './terminal'
 import type { FileEntry, FileNodeKind } from './file-tree'
+import type { GitBranchInfo, GitFileState, ParsedFileDiff } from './git-panel'
 import type {
   RecordingAnalysis,
   RecordedSkill,
@@ -58,6 +59,15 @@ export type {
 } from './terminal'
 
 export type { FileEntry, FileNodeKind, FileIconCategory } from './file-tree'
+
+export type {
+  GitBranch,
+  GitBranchInfo,
+  GitFileState,
+  GitStatusTone,
+  DiffHunk,
+  ParsedFileDiff,
+} from './git-panel'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -213,6 +223,27 @@ export const IPC_CHANNELS = {
   FILE_DELETE: 'file:delete',
   FILE_SEARCH: 'file:search',
   FILE_CHANGED: 'file:changed', // push: main → renderer (fs watch)
+
+  // Git panel + diff (N31)
+  GIT_STATUS: 'git:status',
+  GIT_BRANCHES: 'git:branches',
+  GIT_STAGE: 'git:stage',
+  GIT_UNSTAGE: 'git:unstage',
+  GIT_STAGE_ALL: 'git:stageAll',
+  GIT_UNSTAGE_ALL: 'git:unstageAll',
+  GIT_DISCARD: 'git:discard',
+  GIT_STAGE_HUNK: 'git:stageHunk',
+  GIT_UNSTAGE_HUNK: 'git:unstageHunk',
+  GIT_COMMIT: 'git:commit',
+  GIT_PUSH: 'git:push',
+  GIT_PULL: 'git:pull',
+  GIT_COMMIT_PUSH: 'git:commitPush',
+  GIT_CREATE_BRANCH: 'git:createBranch',
+  GIT_CHECKOUT: 'git:checkout',
+  GIT_MERGE: 'git:merge',
+  GIT_DIFF: 'git:diff',
+  GIT_DIFF_HUNKS: 'git:diffHunks',
+  GIT_CHANGED: 'git:changed', // push: main → renderer (fs watch on .git + tree)
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -753,6 +784,90 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.FILE_CHANGED]: {
     input: Record<string, never>
     output: { dir: string }
+  }
+
+  // Git panel + diff (N31)
+  [IPC_CHANNELS.GIT_STATUS]: {
+    input: Record<string, never>
+    output: {
+      repoRoot: string | null
+      branch: string | null
+      files: GitFileState[]
+      ahead: number
+      behind: number
+    }
+  }
+  [IPC_CHANNELS.GIT_BRANCHES]: {
+    input: Record<string, never>
+    output: GitBranchInfo
+  }
+  [IPC_CHANNELS.GIT_STAGE]: {
+    input: { paths: string[] }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_UNSTAGE]: {
+    input: { paths: string[] }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_STAGE_ALL]: {
+    input: Record<string, never>
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_UNSTAGE_ALL]: {
+    input: Record<string, never>
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_DISCARD]: {
+    input: { path: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_STAGE_HUNK]: {
+    input: { patch: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_UNSTAGE_HUNK]: {
+    input: { patch: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_COMMIT]: {
+    input: { message: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_PUSH]: {
+    input: Record<string, never>
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_PULL]: {
+    input: Record<string, never>
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_COMMIT_PUSH]: {
+    input: { message: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_CREATE_BRANCH]: {
+    input: { name: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_CHECKOUT]: {
+    input: { name: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_MERGE]: {
+    input: { name: string }
+    output: { success: boolean; message?: string }
+  }
+  [IPC_CHANNELS.GIT_DIFF]: {
+    input: { path: string; staged?: boolean }
+    output: GitDiffData | null
+  }
+  [IPC_CHANNELS.GIT_DIFF_HUNKS]: {
+    input: { path: string; staged?: boolean }
+    output: ParsedFileDiff
+  }
+  [IPC_CHANNELS.GIT_CHANGED]: {
+    input: Record<string, never>
+    output: Record<string, never>
   }
 
   // Code editor (N28)

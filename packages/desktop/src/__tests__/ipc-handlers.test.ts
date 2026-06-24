@@ -1,5 +1,14 @@
-import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
+import {
+  describe,
+  test,
+  expect,
+  beforeEach,
+  afterEach,
+  afterAll,
+  mock,
+} from 'bun:test'
+import { execFileSync } from 'child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type {
@@ -204,12 +213,32 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('file:delete')
     expect(registeredChannels).toContain('file:search')
 
+    // Git panel (18: N31; git:changed is push-only)
+    expect(registeredChannels).toContain('git:status')
+    expect(registeredChannels).toContain('git:branches')
+    expect(registeredChannels).toContain('git:stage')
+    expect(registeredChannels).toContain('git:unstage')
+    expect(registeredChannels).toContain('git:stageAll')
+    expect(registeredChannels).toContain('git:unstageAll')
+    expect(registeredChannels).toContain('git:discard')
+    expect(registeredChannels).toContain('git:stageHunk')
+    expect(registeredChannels).toContain('git:unstageHunk')
+    expect(registeredChannels).toContain('git:commit')
+    expect(registeredChannels).toContain('git:push')
+    expect(registeredChannels).toContain('git:pull')
+    expect(registeredChannels).toContain('git:commitPush')
+    expect(registeredChannels).toContain('git:createBranch')
+    expect(registeredChannels).toContain('git:checkout')
+    expect(registeredChannels).toContain('git:merge')
+    expect(registeredChannels).toContain('git:diff')
+    expect(registeredChannels).toContain('git:diffHunks')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 118 channels registered', async () => {
+  test('total handler count: 136 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
@@ -221,8 +250,11 @@ describe('IPC Handler Registration', () => {
     // + 7 editor (N28: read/write/stat/loadState/saveState/gitChanges/gitDiff)
     // + 5 terminal (N29: create/write/resize/kill/list)
     // + 7 file browser (N30: root/list/create/rename/move/delete/search)
-    // + 4 window + 2 app = 118
-    expect(mockHandlers.size).toBe(118)
+    // + 18 git panel (N31: status/branches/stage/unstage/stageAll/unstageAll/
+    //   discard/stageHunk/unstageHunk/commit/push/pull/commitPush/createBranch/
+    //   checkout/merge/diff/diffHunks; git:changed is push-only)
+    // + 4 window + 2 app = 136
+    expect(mockHandlers.size).toBe(136)
   })
 })
 
@@ -1667,5 +1699,135 @@ describe('Handler Logic: File browser (N30)', () => {
       { query: '   ', root: workDir },
     )
     expect(res.matches).toEqual([])
+  })
+})
+
+/**
+ * N31 git-panel handler logic. A real git CLI runner is injected via
+ * `__setGitRunnerForTests`, pinned to a temp repo so the handlers operate on an
+ * isolated repository (never the project's own working tree). This exercises
+ * the full IPC handler → GitManager → runner pipeline plus input validation.
+ */
+describe('Handler Logic: Git panel (N31)', () => {
+  let gitRepo: string
+
+  const runGit = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: gitRepo, encoding: 'utf-8' }).trim()
+
+  beforeEach(async () => {
+    gitRepo = mkdtempSync(join(tmpdir(), 'nexa-ipc-git-'))
+    runGit('init', '-q')
+    runGit('config', 'user.email', 'test@nexa.work')
+    runGit('config', 'user.name', 'Nexa Test')
+    runGit('config', 'commit.gpgsign', 'false')
+    writeFileSync(join(gitRepo, 'a.txt'), 'first\n')
+    runGit('add', 'a.txt')
+    runGit('commit', '-q', '-m', 'initial')
+
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setFileWatchForTests(() => ({ close: () => {} }))
+    // Pin every git invocation to the temp repo regardless of process.cwd().
+    handlers.__setGitRunnerForTests(async (args, _cwd, input) => {
+      try {
+        const stdout = execFileSync('git', args, {
+          cwd: gitRepo,
+          encoding: 'utf-8',
+          ...(input !== undefined ? { input } : {}),
+        })
+        return { stdout, stderr: '', code: 0 }
+      } catch (err) {
+        const e = err as {
+          stdout?: string | Buffer
+          stderr?: string | Buffer
+          status?: number
+        }
+        return {
+          stdout: e.stdout?.toString() ?? '',
+          stderr: e.stderr?.toString() ?? '',
+          code: typeof e.status === 'number' ? e.status : 1,
+        }
+      }
+    })
+    handlers.registerIPCHandlers()
+  })
+
+  afterEach(async () => {
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setGitRunnerForTests(null)
+    rmSync(gitRepo, { recursive: true, force: true })
+  })
+
+  test('git:status reports the current branch and changes', async () => {
+    writeFileSync(join(gitRepo, 'a.txt'), 'changed\n')
+    const res = await mockHandlers.get('git:status')!({})
+    expect(res.repoRoot).not.toBeNull()
+    expect(res.branch).toBeTruthy()
+    expect(
+      res.files.find((f: { path: string }) => f.path === 'a.txt'),
+    ).toBeTruthy()
+  })
+
+  test('git:stage then git:commit clears the working tree', async () => {
+    writeFileSync(join(gitRepo, 'a.txt'), 'changed\n')
+    const staged = await mockHandlers.get('git:stage')!(
+      {},
+      { paths: ['a.txt'] },
+    )
+    expect(staged.success).toBe(true)
+    const committed = await mockHandlers.get('git:commit')!(
+      {},
+      { message: 'feat: change' },
+    )
+    expect(committed.success).toBe(true)
+    expect(runGit('log', '--oneline')).toContain('feat: change')
+  })
+
+  test('git:commit rejects an empty message', async () => {
+    await expect(
+      mockHandlers.get('git:commit')!({}, { message: '   ' }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('git:createBranch then git:branches lists the new branch', async () => {
+    const created = await mockHandlers.get('git:createBranch')!(
+      {},
+      { name: 'feature-z' },
+    )
+    expect(created.success).toBe(true)
+    const branches = await mockHandlers.get('git:branches')!({})
+    expect(branches.current).toBe('feature-z')
+    expect(branches.branches.map((b: { name: string }) => b.name)).toContain(
+      'feature-z',
+    )
+  })
+
+  test('git:createBranch rejects a blank name', async () => {
+    await expect(
+      mockHandlers.get('git:createBranch')!({}, { name: '  ' }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('git:diff returns Monaco diff data for a modified file', async () => {
+    writeFileSync(join(gitRepo, 'a.txt'), 'second\n')
+    const diff = await mockHandlers.get('git:diff')!({}, { path: 'a.txt' })
+    expect(diff.original).toBe('first\n')
+    expect(diff.modified).toBe('second\n')
+  })
+
+  test('git:diff rejects when path is missing', async () => {
+    await expect(mockHandlers.get('git:diff')!({}, {})).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+  })
+
+  test('git:diffHunks splits the unified diff into hunks', async () => {
+    writeFileSync(join(gitRepo, 'a.txt'), 'first\nadded\n')
+    const parsed = await mockHandlers.get('git:diffHunks')!(
+      {},
+      { path: 'a.txt' },
+    )
+    expect(parsed.hunks.length).toBeGreaterThan(0)
   })
 })

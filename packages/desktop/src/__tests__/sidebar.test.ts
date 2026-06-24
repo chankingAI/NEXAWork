@@ -212,6 +212,7 @@ describe('Navigation State', () => {
       replay: 'ReplayView',
       editor: 'EditorView',
       terminal: 'TerminalView',
+      git: 'GitView',
       automation: 'AutomationView',
       security: 'SecurityView',
       more: 'MoreMenu',

@@ -24,7 +24,16 @@ import type {
   TerminalSessionInfo,
   FileEntry,
   FileNodeKind,
+  GitBranchInfo,
+  GitFileState,
+  GitDiffData,
+  ParsedFileDiff,
 } from '../shared/ipc-channels'
+
+interface GitMutationResult {
+  success: boolean
+  message?: string
+}
 
 /**
  * NexaWork Preload API
@@ -521,6 +530,65 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.FILE_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.FILE_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Git panel + diff (N31) ===
+  git: {
+    status: (): Promise<{
+      repoRoot: string | null
+      branch: string | null
+      files: GitFileState[]
+      ahead: number
+      behind: number
+    }> => ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, {}),
+    branches: (): Promise<GitBranchInfo> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_BRANCHES, {}),
+    stage: (input: { paths: string[] }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STAGE, input),
+    unstage: (input: { paths: string[] }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_UNSTAGE, input),
+    stageAll: (): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STAGE_ALL, {}),
+    unstageAll: (): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_UNSTAGE_ALL, {}),
+    discard: (input: { path: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_DISCARD, input),
+    stageHunk: (input: { patch: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STAGE_HUNK, input),
+    unstageHunk: (input: { patch: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_UNSTAGE_HUNK, input),
+    commit: (input: { message: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_COMMIT, input),
+    push: (): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_PUSH, {}),
+    pull: (): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_PULL, {}),
+    commitAndPush: (input: { message: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_COMMIT_PUSH, input),
+    createBranch: (input: { name: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_CREATE_BRANCH, input),
+    checkout: (input: { name: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_CHECKOUT, input),
+    merge: (input: { name: string }): Promise<GitMutationResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_MERGE, input),
+    diff: (input: {
+      path: string
+      staged?: boolean
+    }): Promise<GitDiffData | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_DIFF, input),
+    diffHunks: (input: {
+      path: string
+      staged?: boolean
+    }): Promise<ParsedFileDiff> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_DIFF_HUNKS, input),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.GIT_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.GIT_CHANGED, handler)
       }
     },
   },

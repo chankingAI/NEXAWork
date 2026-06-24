@@ -24,6 +24,7 @@ import { RecordedSkillPanel } from './components/RecordedSkillPanel';
 import { SkillGenerateDialog } from './components/SkillGenerateDialog';
 import { EditorPage } from './components/EditorPage';
 import { TerminalPanel } from './components/TerminalPanel';
+import { GitPanel } from './components/GitPanel';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -215,6 +216,8 @@ export function App() {
               <EditorPage onAskAi={handleAskAi} />
             ) : activeNav === 'terminal' ? (
               <TerminalPanel />
+            ) : activeNav === 'git' ? (
+              <GitPanel />
             ) : activeNav === 'security' ? (
               <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
             ) : activeSessionId ? (
