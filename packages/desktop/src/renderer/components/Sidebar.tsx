@@ -27,6 +27,7 @@ import {
   Shield,
   PlayCircle,
   Wand2,
+  FileCode,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export type NavigationId =
   | 'skills'
   | 'recordedSkills'
   | 'replay'
+  | 'editor'
   | 'automation'
   | 'security'
   | 'more'
@@ -88,6 +90,7 @@ const navItems: NavItemConfig[] = [
   { id: 'skills', label: '技能', icon: <Sparkles size={18} /> },
   { id: 'recordedSkills', label: '录制技能', icon: <Wand2 size={18} /> },
   { id: 'replay', label: '回放', icon: <PlayCircle size={18} /> },
+  { id: 'editor', label: '编辑器', icon: <FileCode size={18} /> },
   { id: 'automation', label: '自动化', icon: <Zap size={18} /> },
   { id: 'security', label: '安全', icon: <Shield size={18} /> },
   {

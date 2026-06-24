@@ -4,6 +4,12 @@
  * 63-method centralized handler registry (Codex pattern)
  */
 
+import type {
+  EditorPersistState,
+  GitChange,
+  GitDiffData,
+  LineRange,
+} from './editor'
 import type { ReplayReport, ReplayStatus } from './replay'
 import type {
   RecordingAnalysis,
@@ -32,6 +38,16 @@ export type {
   SkillSource,
   RecordingAnalysis,
 } from './skill'
+
+export type {
+  EditorConfig,
+  EditorTab,
+  EditorPersistState,
+  GitChange,
+  GitChangeStatus,
+  GitDiffData,
+  LineRange,
+} from './editor'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -157,6 +173,16 @@ export const IPC_CHANNELS = {
   SKILL_RECORDED_RECORD_EXEC: 'skill:recorded:recordExec',
   SKILL_RECORDED_EXPORT: 'skill:recorded:export',
   SKILL_RECORDED_CHANGED: 'skill:recorded:changed', // push: main → renderer
+
+  // Code editor (N28)
+  EDITOR_READ_FILE: 'editor:readFile',
+  EDITOR_WRITE_FILE: 'editor:writeFile',
+  EDITOR_STAT_FILE: 'editor:statFile',
+  EDITOR_LOAD_STATE: 'editor:loadState',
+  EDITOR_SAVE_STATE: 'editor:saveState',
+  EDITOR_GIT_CHANGES: 'editor:gitChanges',
+  EDITOR_GIT_DIFF: 'editor:gitDiff',
+  EDITOR_OPEN_FILE: 'editor:openFile', // push: main → renderer (AI-driven open)
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -652,6 +678,53 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.SKILL_RECORDED_CHANGED]: {
     input: Record<string, never>
     output: { skills: SkillSummary[] }
+  }
+
+  // Code editor (N28)
+  [IPC_CHANNELS.EDITOR_READ_FILE]: {
+    input: { path: string }
+    output: {
+      path: string
+      content: string
+      language: string
+      tooLarge: boolean
+      binary: boolean
+      mtime: number
+    }
+  }
+  [IPC_CHANNELS.EDITOR_WRITE_FILE]: {
+    input: { path: string; content: string }
+    output: { path: string; success: boolean; mtime: number }
+  }
+  [IPC_CHANNELS.EDITOR_STAT_FILE]: {
+    input: { path: string }
+    output: {
+      exists: boolean
+      isFile: boolean
+      isDirectory: boolean
+      size: number
+      mtime: number
+    }
+  }
+  [IPC_CHANNELS.EDITOR_LOAD_STATE]: {
+    input: Record<string, never>
+    output: EditorPersistState
+  }
+  [IPC_CHANNELS.EDITOR_SAVE_STATE]: {
+    input: EditorPersistState
+    output: EditorPersistState
+  }
+  [IPC_CHANNELS.EDITOR_GIT_CHANGES]: {
+    input: { cwd?: string }
+    output: { repoRoot: string | null; changes: GitChange[] }
+  }
+  [IPC_CHANNELS.EDITOR_GIT_DIFF]: {
+    input: { path: string; cwd?: string }
+    output: GitDiffData | null
+  }
+  [IPC_CHANNELS.EDITOR_OPEN_FILE]: {
+    input: Record<string, never>
+    output: { path: string; highlightRanges?: LineRange[] }
   }
 
   // Window

@@ -20,6 +20,7 @@ import type {
   ReplayStatus,
   SkillSummary,
   SkillVariable,
+  EditorPersistState,
 } from '../shared/ipc-channels'
 
 /**
@@ -394,6 +395,31 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.SKILL_RECORDED_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.SKILL_RECORDED_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Code editor (N28) ===
+  editor: {
+    readFile: (input: { path: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_READ_FILE, input),
+    writeFile: (input: { path: string; content: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_WRITE_FILE, input),
+    statFile: (input: { path: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_STAT_FILE, input),
+    loadState: () => ipcRenderer.invoke(IPC_CHANNELS.EDITOR_LOAD_STATE, {}),
+    saveState: (input: EditorPersistState) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_SAVE_STATE, input),
+    gitChanges: (input?: { cwd?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_GIT_CHANGES, input ?? {}),
+    gitDiff: (input: { path: string; cwd?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.EDITOR_GIT_DIFF, input),
+
+    onOpenFile: (callback: (data: { path: string }) => void) => {
+      const handler = (_: unknown, data: { path: string }) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.EDITOR_OPEN_FILE, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.EDITOR_OPEN_FILE, handler)
       }
     },
   },

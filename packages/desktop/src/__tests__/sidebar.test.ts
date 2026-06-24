@@ -210,6 +210,7 @@ describe('Navigation State', () => {
       skills: 'SkillsView',
       recordedSkills: 'RecordedSkillsView',
       replay: 'ReplayView',
+      editor: 'EditorView',
       automation: 'AutomationView',
       security: 'SecurityView',
       more: 'MoreMenu',

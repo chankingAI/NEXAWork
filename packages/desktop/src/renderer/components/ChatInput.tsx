@@ -9,6 +9,8 @@ export interface ChatInputProps {
   disabled?: boolean;
   /** Optional toolbar rendered below the input (e.g. permission selector). */
   toolbar?: React.ReactNode;
+  /** Externally-supplied prefill; re-applied whenever `nonce` changes. */
+  draft?: { text: string; nonce: number } | null;
 }
 
 /**
@@ -26,6 +28,7 @@ export function ChatInput({
   placeholder = '今天帮你做些什么？',
   disabled = false,
   toolbar,
+  draft,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [showMention, setShowMention] = useState(false);
@@ -44,6 +47,14 @@ export function ChatInput({
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Apply an externally-supplied prefill (e.g. "Ask AI about this"). Keyed on
+  // the draft nonce so repeated asks re-fill even with identical text.
+  useEffect(() => {
+    if (!draft || !draft.text) return;
+    setInput(draft.text);
+    textareaRef.current?.focus();
+  }, [draft?.nonce]);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();

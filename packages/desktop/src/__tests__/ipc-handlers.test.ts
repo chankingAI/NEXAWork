@@ -1,4 +1,7 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 /**
  * IPC Handlers Unit Tests
@@ -172,12 +175,21 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('skill:recorded:recordExec')
     expect(registeredChannels).toContain('skill:recorded:export')
 
+    // Code editor (7: N28; EDITOR_OPEN_FILE is push-only)
+    expect(registeredChannels).toContain('editor:readFile')
+    expect(registeredChannels).toContain('editor:writeFile')
+    expect(registeredChannels).toContain('editor:statFile')
+    expect(registeredChannels).toContain('editor:loadState')
+    expect(registeredChannels).toContain('editor:saveState')
+    expect(registeredChannels).toContain('editor:gitChanges')
+    expect(registeredChannels).toContain('editor:gitDiff')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 99 channels registered', async () => {
+  test('total handler count: 106 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
@@ -185,8 +197,10 @@ describe('IPC Handler Registration', () => {
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
     // + 8 data (N23) + 9 record (6 N24 + 2 N25 config + 1 N26 list)
-    // + 8 replay (N26) + 14 recorded skill (N27) + 4 window + 2 app = 99
-    expect(mockHandlers.size).toBe(99)
+    // + 8 replay (N26) + 14 recorded skill (N27)
+    // + 7 editor (N28: read/write/stat/loadState/saveState/gitChanges/gitDiff)
+    // + 4 window + 2 app = 106
+    expect(mockHandlers.size).toBe(106)
   })
 })
 
@@ -1304,5 +1318,90 @@ describe('Handler Logic: Recorded skills (N27)', () => {
       { id: 'nope' },
     )
     expect(exported).toBeNull()
+  })
+})
+
+/**
+ * N28 code-editor handler-level coverage. File IO goes through a real temp dir
+ * (the editor manager keeps an in-memory tab session in tests since the
+ * user-data state path resolves to null). Git-backed channels are exercised
+ * against the repo working tree and only asserted structurally.
+ */
+describe('Handler Logic: Code editor (N28)', () => {
+  const workDir = mkdtempSync(join(tmpdir(), 'nexa-ipc-editor-'))
+
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  test('editor:writeFile then editor:readFile round-trips through disk', async () => {
+    const path = join(workDir, 'note.ts')
+    const write = await mockHandlers.get('editor:writeFile')!(
+      {},
+      { path, content: 'export const a = 1\n' },
+    )
+    expect(write.success).toBe(true)
+
+    const read = await mockHandlers.get('editor:readFile')!({}, { path })
+    expect(read.content).toBe('export const a = 1\n')
+    expect(read.language).toBe('typescript')
+  })
+
+  test('editor:readFile rejects when path is missing', async () => {
+    const read = mockHandlers.get('editor:readFile')!
+    await expect(read({}, {})).rejects.toBeDefined()
+  })
+
+  test('editor:readFile rejects (READ_FAILED) for a missing file', async () => {
+    const read = mockHandlers.get('editor:readFile')!
+    await expect(
+      read({}, { path: join(workDir, 'absent.ts') }),
+    ).rejects.toBeDefined()
+  })
+
+  test('editor:writeFile rejects when path is missing', async () => {
+    const write = mockHandlers.get('editor:writeFile')!
+    await expect(write({}, { content: 'x' })).rejects.toBeDefined()
+  })
+
+  test('editor:statFile reports existence without throwing', async () => {
+    const path = join(workDir, 'stat.txt')
+    await mockHandlers.get('editor:writeFile')!({}, { path, content: 'hi' })
+    const ok = await mockHandlers.get('editor:statFile')!({}, { path })
+    expect(ok.exists).toBe(true)
+    expect(ok.isFile).toBe(true)
+
+    const missing = await mockHandlers.get('editor:statFile')!(
+      {},
+      { path: join(workDir, 'nope.txt') },
+    )
+    expect(missing.exists).toBe(false)
+  })
+
+  test('editor:saveState then editor:loadState round-trips the session', async () => {
+    const saved = await mockHandlers.get('editor:saveState')!(
+      {},
+      { openPaths: ['/a.ts', '/b.ts'], activePath: '/a.ts' },
+    )
+    expect(saved.openPaths).toEqual(['/a.ts', '/b.ts'])
+
+    const loaded = await mockHandlers.get('editor:loadState')!({})
+    expect(loaded.activePath).toBe('/a.ts')
+  })
+
+  test('editor:gitChanges returns a structural result', async () => {
+    const result = await mockHandlers.get('editor:gitChanges')!({}, {})
+    expect(Array.isArray(result.changes)).toBe(true)
+    expect(
+      typeof result.repoRoot === 'string' || result.repoRoot === null,
+    ).toBe(true)
+  })
+
+  test('editor:gitDiff rejects when path is missing', async () => {
+    const diff = mockHandlers.get('editor:gitDiff')!
+    await expect(diff({}, {})).rejects.toBeDefined()
   })
 })

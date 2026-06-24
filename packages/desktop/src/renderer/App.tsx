@@ -22,6 +22,7 @@ import { RecordConfigPanel } from './components/RecordConfigPanel';
 import { ReplayPanel } from './components/ReplayPanel';
 import { RecordedSkillPanel } from './components/RecordedSkillPanel';
 import { SkillGenerateDialog } from './components/SkillGenerateDialog';
+import { EditorPage } from './components/EditorPage';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -37,6 +38,15 @@ export function App() {
   const recorder = useRecorder();
   const [showRecordConfig, setShowRecordConfig] = useState(false);
   const [generateRecordingId, setGenerateRecordingId] = useState<string | null>(null);
+  const [askAiDraft, setAskAiDraft] = useState<{ text: string; nonce: number } | null>(null);
+
+  // "Ask AI about this" from the code editor: jump to the assistant, ensure a
+  // session exists, and prefill the chat input with the built prompt.
+  const handleAskAi = useCallback((prompt: string) => {
+    setActiveNav('assistant');
+    setActiveSessionId(prev => prev ?? `session-${Date.now()}`);
+    setAskAiDraft({ text: prompt, nonce: Date.now() });
+  }, []);
 
   const handleOpenRecordConfig = useCallback(() => {
     setShowRecordConfig(true);
@@ -200,11 +210,14 @@ export function App() {
               <RecordedSkillPanel onExecuted={() => setActiveNav('replay')} />
             ) : activeNav === 'replay' ? (
               <ReplayPanel />
+            ) : activeNav === 'editor' ? (
+              <EditorPage onAskAi={handleAskAi} />
             ) : activeNav === 'security' ? (
               <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
             ) : activeSessionId ? (
               <ChatView
                 sessionId={activeSessionId}
+                draft={askAiDraft}
                 inputToolbar={
                   <PermissionSelector
                     mode={permission.mode}

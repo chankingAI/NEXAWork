@@ -356,6 +356,26 @@ const zhCN = {
   'skill.history.success': '成功',
   'skill.history.failed': '失败',
   'skill.confirmDelete': '确定删除此技能？',
+  // ─── N28 代码编辑器 ───
+  'editor.title': '代码编辑器',
+  'editor.askAi': '询问 AI 关于这段代码',
+  'editor.noOpenFiles': '未打开文件',
+  'editor.closeTab': '关闭标签',
+  'editor.emptyHint': '从右上方输入路径打开文件，或等待 AI 修改文件后自动打开',
+  'editor.openPlaceholder': '输入文件绝对路径…',
+  'editor.open': '打开',
+  'editor.view.code': '代码',
+  'editor.view.diff': '差异',
+  'editor.diff.changes': '变更',
+  'editor.diff.refresh': '刷新',
+  'editor.diff.clean': '工作区干净，无变更',
+  'editor.diff.noRepo': '当前目录不是 Git 仓库',
+  'editor.diff.pick': '选择左侧文件查看差异',
+  'editor.diff.loading': '正在加载差异…',
+  'editor.diff.addComment': '添加评论',
+  'editor.diff.comments': '评论',
+  'editor.diff.commentPrompt': '输入行内评论：',
+  'editor.diff.removeComment': '删除评论',
 } as const
 
 export type MessageKey = keyof typeof zhCN
@@ -703,6 +723,27 @@ const en: Messages = {
   'skill.history.success': 'Success',
   'skill.history.failed': 'Failed',
   'skill.confirmDelete': 'Delete this skill?',
+  // ─── N28 code editor ───
+  'editor.title': 'Code Editor',
+  'editor.askAi': 'Ask AI about this',
+  'editor.noOpenFiles': 'No open files',
+  'editor.closeTab': 'Close tab',
+  'editor.emptyHint':
+    'Open a file by path above, or wait for AI to edit a file',
+  'editor.openPlaceholder': 'Enter absolute file path…',
+  'editor.open': 'Open',
+  'editor.view.code': 'Code',
+  'editor.view.diff': 'Diff',
+  'editor.diff.changes': 'Changes',
+  'editor.diff.refresh': 'Refresh',
+  'editor.diff.clean': 'Working tree clean, no changes',
+  'editor.diff.noRepo': 'Current directory is not a Git repository',
+  'editor.diff.pick': 'Select a file on the left to view its diff',
+  'editor.diff.loading': 'Loading diff…',
+  'editor.diff.addComment': 'Add comment',
+  'editor.diff.comments': 'Comments',
+  'editor.diff.commentPrompt': 'Enter an inline comment:',
+  'editor.diff.removeComment': 'Remove comment',
 }
 
 const ja: Messages = {
@@ -1055,6 +1096,27 @@ const ja: Messages = {
   'skill.history.success': '成功',
   'skill.history.failed': '失敗',
   'skill.confirmDelete': 'このスキルを削除しますか？',
+  // ─── N28 コードエディタ ───
+  'editor.title': 'コードエディタ',
+  'editor.askAi': 'このコードについて AI に質問',
+  'editor.noOpenFiles': '開いているファイルがありません',
+  'editor.closeTab': 'タブを閉じる',
+  'editor.emptyHint':
+    '上部でパスを入力してファイルを開くか、AI のファイル編集を待ちます',
+  'editor.openPlaceholder': 'ファイルの絶対パスを入力…',
+  'editor.open': '開く',
+  'editor.view.code': 'コード',
+  'editor.view.diff': '差分',
+  'editor.diff.changes': '変更',
+  'editor.diff.refresh': '更新',
+  'editor.diff.clean': 'ワーキングツリーはクリーンで、変更はありません',
+  'editor.diff.noRepo': '現在のディレクトリは Git リポジトリではありません',
+  'editor.diff.pick': '左側のファイルを選択して差分を表示',
+  'editor.diff.loading': '差分を読み込み中…',
+  'editor.diff.addComment': 'コメントを追加',
+  'editor.diff.comments': 'コメント',
+  'editor.diff.commentPrompt': 'インラインコメントを入力：',
+  'editor.diff.removeComment': 'コメントを削除',
 }
 
 const DICTIONARIES: Record<LanguageCode, Messages> = {

@@ -283,3 +283,17 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* =============================================
+   N28 Monaco code editor — AI-edit flash highlight
+   ============================================= */
+.nexa-ai-edit-line {
+  background: var(--color-accent-green-soft, rgba(34, 197, 94, 0.16));
+  transition: background 600ms ease-out;
+}
+.nexa-ai-edit-glyph {
+  background: var(--color-accent-green, #22c55e);
+  /* biome-ignore lint/complexity/noImportantStyles: override Monaco's inline lane width to render a thin marker bar */
+  width: 3px !important;
+  margin-left: 2px;
+}
