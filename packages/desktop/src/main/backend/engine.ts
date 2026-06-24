@@ -21,6 +21,7 @@ import type {
 } from '../../shared/ipc-channels'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { extractEditedFilePath, isFileMutatingTool } from '../../shared/editor'
+import { extractShellCommand, isShellCommandTool } from '../../shared/terminal'
 import { permissionManager } from './permission-manager'
 
 // ===== Type Definitions =====
@@ -294,6 +295,21 @@ function notifyEditorFileChanged(
   }
 }
 
+/**
+ * Push an AI shell command to the terminal panel so it is echoed in the active
+ * terminal as the assistant runs it (N29). Display-only — the command is not
+ * written to any PTY's stdin (the AI bridge executes it independently).
+ */
+function notifyTerminalAiCommand(
+  win: BrowserWindow | null,
+  command: string,
+  cwd?: string,
+): void {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(IPC_CHANNELS.TERMINAL_AI_COMMAND, { command, cwd })
+  }
+}
+
 async function streamQueryAsync(
   engine: SessionEngine,
   streamId: string,
@@ -342,6 +358,17 @@ async function streamQueryAsync(
           if (isFileMutatingTool(name)) {
             const path = extractEditedFilePath(chunk.input)
             if (path) pendingEditPaths.set(name, path)
+          } else if (isShellCommandTool(name)) {
+            const command = extractShellCommand(
+              chunk.input as Record<string, unknown> | undefined,
+            )
+            if (command) {
+              notifyTerminalAiCommand(
+                win,
+                command,
+                engine.config.cwd ?? undefined,
+              )
+            }
           }
           emitEvent({
             type: 'tool_start',

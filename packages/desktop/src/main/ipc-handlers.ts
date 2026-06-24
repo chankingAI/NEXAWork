@@ -45,6 +45,11 @@ import { initReplayManager, type ReplayManager } from './backend/replay-manager'
 import { initSkillManager, type SkillManager } from './backend/skill-manager'
 import { initEditorManager, type EditorManager } from './backend/editor-manager'
 import {
+  initTerminalManager,
+  type PtySpawnFn,
+  type TerminalManager,
+} from './backend/terminal-manager'
+import {
   detectLanguage,
   type GitChange,
   type GitChangeStatus,
@@ -94,6 +99,15 @@ let replayTicker: ReturnType<typeof setInterval> | null = null
 let recordedSkills: SkillManager
 // Code-editor file IO + tab-session persistence (N28).
 let editorManager: EditorManager
+// node-pty terminal sessions for the xterm.js panel (N29).
+let terminalManager: TerminalManager
+// Test seam: lets unit tests inject a fake PTY spawner before registration so
+// the native node-pty binding (which cannot load under `bun test`) is avoided.
+let terminalSpawnOverride: PtySpawnFn | null = null
+/** @internal Test-only: override the PTY spawn factory (null = real node-pty). */
+export function __setTerminalSpawnForTests(fn: PtySpawnFn | null): void {
+  terminalSpawnOverride = fn
+}
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -217,6 +231,24 @@ function broadcastSkillChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.SKILL_RECORDED_CHANGED, { skills })
+    }
+  }
+}
+
+/** Push PTY stdout for a terminal to every renderer window (N29). */
+function broadcastTerminalData(id: string, data: string): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.TERMINAL_DATA, { id, data })
+    }
+  }
+}
+
+/** Push a terminal's exit event to every renderer window (N29). */
+function broadcastTerminalExit(id: string, exitCode: number): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.TERMINAL_EXIT, { id, exitCode })
     }
   }
 }
@@ -691,6 +723,15 @@ export function registerIPCHandlers(): void {
 
   // Initialize the N28 code-editor manager (file IO + tab-session persistence).
   editorManager = initEditorManager({ statePath: resolveEditorStatePath() })
+
+  // Initialize the N29 terminal manager (node-pty). Tear down any prior PTYs
+  // on re-registration, then forward PTY output / exit to renderer windows.
+  terminalManager?.killAll()
+  terminalManager = initTerminalManager(
+    terminalSpawnOverride ? { spawn: terminalSpawnOverride } : {},
+  )
+  terminalManager.onData(broadcastTerminalData)
+  terminalManager.onExit(broadcastTerminalExit)
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1637,6 +1678,51 @@ export function registerIPCHandlers(): void {
       return gitDiffData(input.path, resolveEditorCwd(input?.cwd))
     },
   )
+
+  // === Terminal (N29) ===
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_CREATE,
+    async (
+      _event,
+      input: {
+        shell?: string
+        cwd?: string
+        cols?: number
+        rows?: number
+        title?: string
+      },
+    ) => terminalManager.create(input ?? {}),
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_WRITE,
+    async (_event, input: { id: string; data: string }) => {
+      if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
+      return { success: terminalManager.write(input.id, input.data ?? '') }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_RESIZE,
+    async (_event, input: { id: string; cols: number; rows: number }) => {
+      if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
+      return {
+        success: terminalManager.resize(input.id, input.cols, input.rows),
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_KILL,
+    async (_event, input: { id: string }) => {
+      if (!input?.id) throw createError('INVALID_INPUT', 'id is required')
+      return { success: terminalManager.kill(input.id) }
+    },
+  )
+
+  ipcMain.handle(IPC_CHANNELS.TERMINAL_LIST, async () => ({
+    sessions: terminalManager.list(),
+  }))
 
   // === Experts ===
   ipcMain.handle(
