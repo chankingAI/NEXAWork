@@ -119,6 +119,20 @@ interface PendingRequest {
   riskLevel: PermissionRiskLevel
 }
 
+/**
+ * Sandbox policy gate (N32). Given a tool name, returns `true` to auto-allow
+ * (an unguarded sandbox category), or `null` to defer to the normal flow.
+ */
+export type PolicyGate = (tool: string) => boolean | null
+
+/** Audit sink (N32): forwards every recorded decision to the security center. */
+export type AuditSink = (info: {
+  tool: string
+  allowed: boolean
+  detail: string
+  riskLevel: PermissionRiskLevel
+}) => void
+
 export class PermissionManager {
   private mode: DesktopPermissionMode = 'default'
   private bypassAvailable: boolean
@@ -126,6 +140,8 @@ export class PermissionManager {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly log: PermissionLogEntry[] = []
   private idCounter = 0
+  private policyGate?: PolicyGate
+  private auditSink?: AuditSink
 
   constructor(options?: { bypassAvailable?: boolean }) {
     // bypassPermissions is unavailable when running as root / inside a sandbox.
@@ -139,6 +155,16 @@ export class PermissionManager {
 
   isBypassAvailable(): boolean {
     return this.bypassAvailable
+  }
+
+  /** Wire the N32 sandbox policy gate (optional). */
+  setPolicyGate(gate: PolicyGate | null): void {
+    this.policyGate = gate ?? undefined
+  }
+
+  /** Wire the N32 audit sink so decisions reach the security center log. */
+  setAuditSink(sink: AuditSink | null): void {
+    this.auditSink = sink ?? undefined
   }
 
   /** Switch mode. 'full' is rejected when bypass is unavailable. */
@@ -184,6 +210,12 @@ export class PermissionManager {
       timestamp: new Date().toISOString(),
     })
     if (this.log.length > MAX_LOG_ENTRIES) this.log.shift()
+    this.auditSink?.({
+      tool: tool.name,
+      allowed: decision === 'allow',
+      detail: summarizeInput(tool.input),
+      riskLevel,
+    })
   }
 
   /**
@@ -197,6 +229,12 @@ export class PermissionManager {
     tool: ToolRequest,
   ): Promise<boolean> {
     const { riskLevel, description, affectedScope } = classifyTool(tool)
+
+    // N32: an unguarded sandbox category bypasses the prompt entirely.
+    if (this.policyGate?.(tool.name) === true) {
+      this.record(tool, 'allow', 'auto', riskLevel)
+      return Promise.resolve(true)
+    }
 
     if (this.mode === 'full') {
       this.record(tool, 'allow', 'auto', riskLevel)
@@ -271,6 +309,8 @@ export class PermissionManager {
     this.sessionAllow.clear()
     this.log.length = 0
     this.mode = 'default'
+    this.policyGate = undefined
+    this.auditSink = undefined
   }
 }
 

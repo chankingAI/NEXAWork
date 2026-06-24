@@ -28,6 +28,9 @@ import type {
   GitFileState,
   GitDiffData,
   ParsedFileDiff,
+  SecurityConfig,
+  SecurityConfigPatch,
+  AuditLogEntry,
 } from '../shared/ipc-channels'
 
 interface GitMutationResult {
@@ -589,6 +592,35 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.GIT_CHANGED, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.GIT_CHANGED, handler)
+      }
+    },
+  },
+
+  // === Security center (N32) ===
+  security: {
+    getConfig: (): Promise<SecurityConfig> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_GET_CONFIG, {}),
+    updateConfig: (input: {
+      patch: SecurityConfigPatch
+    }): Promise<{ success: boolean; config: SecurityConfig }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_UPDATE_CONFIG, input),
+    auditList: (input?: {
+      limit?: number
+    }): Promise<{ entries: AuditLogEntry[] }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_LIST, input ?? {}),
+    auditClear: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_CLEAR, {}),
+    auditExport: (): Promise<{
+      content: string
+      filename: string
+      byteLength: number
+    }> => ipcRenderer.invoke(IPC_CHANNELS.SECURITY_AUDIT_EXPORT, {}),
+
+    onChanged: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.SECURITY_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.SECURITY_CHANGED, handler)
       }
     },
   },

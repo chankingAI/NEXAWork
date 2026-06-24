@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar, type NavigationId } from './components/Sidebar';
 import { SceneTabs, useScene } from './components/SceneTabs';
@@ -11,7 +11,6 @@ import { useSettings } from './hooks/useSettings';
 import { SkillManagementPage, type CreateSkillDraft, type ImportMethod } from './components/SkillManagementPage';
 import { PermissionSelector } from './components/PermissionSelector';
 import { PermissionConfirmDialog } from './components/PermissionConfirmDialog';
-import { PermissionLogView } from './components/PermissionLogView';
 import { defaultSkills, type MarketSkill } from './components/SkillSearchPanel';
 import { usePermission } from './hooks/usePermission';
 import { useRecorder } from './hooks/useRecorder';
@@ -25,6 +24,7 @@ import { SkillGenerateDialog } from './components/SkillGenerateDialog';
 import { EditorPage } from './components/EditorPage';
 import { TerminalPanel } from './components/TerminalPanel';
 import { GitPanel } from './components/GitPanel';
+import { SecurityCenterPage } from './components/SecurityCenterPage';
 
 export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -85,11 +85,6 @@ export function App() {
       setActiveSessionId(null);
     }
   }, []);
-
-  // Refresh permission log when entering the security view.
-  useEffect(() => {
-    if (activeNav === 'security') permission.refreshLog();
-  }, [activeNav, permission.refreshLog]);
 
   // ─── Skill handlers ─────────────────────────────────────────
   const handleToggleSkill = useCallback((skillId: string, enabled: boolean) => {
@@ -219,7 +214,7 @@ export function App() {
             ) : activeNav === 'git' ? (
               <GitPanel />
             ) : activeNav === 'security' ? (
-              <PermissionLogView entries={permission.log} onClear={permission.clearLog} />
+              <SecurityCenterPage />
             ) : activeSessionId ? (
               <ChatView
                 sessionId={activeSessionId}

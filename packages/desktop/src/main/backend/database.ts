@@ -29,12 +29,20 @@ import type {
   AutomationRun,
   ProjectInfo,
 } from '../../shared/ipc-channels'
+import type {
+  AuditLogEntry,
+  SecurityConfig,
+} from '../../shared/security-center'
 
 interface DBSchema {
   version: number
   automations: AutomationInfo[]
   automationRuns: AutomationRun[]
   projects: ProjectInfo[]
+  /** N32 security center: the persisted policy (null until first write). */
+  securityConfig: SecurityConfig | null
+  /** N32 security center: the durable audit log ("SQLite" stand-in). */
+  auditLog: AuditLogEntry[]
 }
 
 const EMPTY_SCHEMA: DBSchema = {
@@ -42,7 +50,12 @@ const EMPTY_SCHEMA: DBSchema = {
   automations: [],
   automationRuns: [],
   projects: [],
+  securityConfig: null,
+  auditLog: [],
 }
+
+/** Cap the audit log so the JSON document stays bounded. */
+const MAX_AUDIT_ENTRIES = 1000
 
 export class Database {
   private data: DBSchema
@@ -67,6 +80,8 @@ export class Database {
         automations: parsed.automations ?? [],
         automationRuns: parsed.automationRuns ?? [],
         projects: parsed.projects ?? [],
+        securityConfig: parsed.securityConfig ?? null,
+        auditLog: parsed.auditLog ?? [],
       }
     } catch {
       // Corrupt file → start clean rather than crash the app.
@@ -190,6 +205,41 @@ export class Database {
     return changed
   }
 
+  // ── Security center (N32) ──
+  getSecurityConfig(): SecurityConfig | null {
+    return this.data.securityConfig
+  }
+
+  setSecurityConfig(config: SecurityConfig): SecurityConfig {
+    this.data.securityConfig = config
+    this.persist()
+    return config
+  }
+
+  /** Newest-first audit entries, optionally limited. */
+  listAuditLog(limit?: number): AuditLogEntry[] {
+    const entries = [...this.data.auditLog].reverse()
+    return limit ? entries.slice(0, limit) : entries
+  }
+
+  appendAuditLog(entry: AuditLogEntry): AuditLogEntry {
+    this.data.auditLog.push(entry)
+    if (this.data.auditLog.length > MAX_AUDIT_ENTRIES) {
+      this.data.auditLog.splice(
+        0,
+        this.data.auditLog.length - MAX_AUDIT_ENTRIES,
+      )
+    }
+    this.persist()
+    return entry
+  }
+
+  clearAuditLog(): void {
+    if (this.data.auditLog.length === 0) return
+    this.data.auditLog = []
+    this.persist()
+  }
+
   // ── Bulk export / restore (N23 data management) ──
   /** Snapshot every table for export/backup. */
   exportData(): {
@@ -215,6 +265,10 @@ export class Database {
       automations: data.automations ?? [],
       automationRuns: data.automationRuns ?? [],
       projects: data.projects ?? [],
+      // Security policy + audit log are out of N23's scope; preserve them
+      // across a data-management restore.
+      securityConfig: this.data.securityConfig,
+      auditLog: this.data.auditLog,
     }
     this.persist()
   }
