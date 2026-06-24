@@ -5,6 +5,12 @@
  */
 
 import type { ReplayReport, ReplayStatus } from './replay'
+import type {
+  RecordingAnalysis,
+  RecordedSkill,
+  SkillSummary,
+  SkillVariable,
+} from './skill'
 
 export type {
   ReplayReport,
@@ -14,6 +20,18 @@ export type {
   ReplayState,
   ReplaySpeed,
 } from './replay'
+
+export type {
+  RecordedSkill,
+  SkillSummary,
+  SkillStep,
+  SkillStepType,
+  SkillVariable,
+  SkillVariableType,
+  SkillExecutionRecord,
+  SkillSource,
+  RecordingAnalysis,
+} from './skill'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -122,6 +140,23 @@ export const IPC_CHANNELS = {
   REPLAY_REPORT: 'replay:report',
   REPLAY_CHANGED: 'replay:changed', // push: main → renderer
   REPLAY_DONE: 'replay:done', // push: main → renderer (report ready)
+
+  // Recorded-skill management (N27)
+  SKILL_RECORDED_LIST: 'skill:recorded:list',
+  SKILL_RECORDED_GET: 'skill:recorded:get',
+  SKILL_RECORDED_ANALYZE: 'skill:recorded:analyze',
+  SKILL_RECORDED_CREATE: 'skill:recorded:create',
+  SKILL_RECORDED_UPDATE: 'skill:recorded:update',
+  SKILL_RECORDED_REORDER: 'skill:recorded:reorder',
+  SKILL_RECORDED_UPDATE_STEP: 'skill:recorded:updateStep',
+  SKILL_RECORDED_REMOVE_STEP: 'skill:recorded:removeStep',
+  SKILL_RECORDED_ADD_WAIT: 'skill:recorded:addWait',
+  SKILL_RECORDED_DUPLICATE: 'skill:recorded:duplicate',
+  SKILL_RECORDED_DELETE: 'skill:recorded:delete',
+  SKILL_RECORDED_EXECUTE: 'skill:recorded:execute',
+  SKILL_RECORDED_RECORD_EXEC: 'skill:recorded:recordExec',
+  SKILL_RECORDED_EXPORT: 'skill:recorded:export',
+  SKILL_RECORDED_CHANGED: 'skill:recorded:changed', // push: main → renderer
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -525,6 +560,98 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.REPLAY_DONE]: {
     input: Record<string, never>
     output: ReplayReport
+  }
+
+  // Recorded-skill management (N27)
+  [IPC_CHANNELS.SKILL_RECORDED_LIST]: {
+    input: Record<string, never>
+    output: { skills: SkillSummary[] }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_GET]: {
+    input: { id: string }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_ANALYZE]: {
+    input: { recordingId: string }
+    output: { analysis: RecordingAnalysis | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_CREATE]: {
+    input: {
+      recordingId: string
+      name: string
+      description?: string
+      icon?: string
+      tags?: string[]
+      whenToUse?: string
+      variables?: SkillVariable[]
+    }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_UPDATE]: {
+    input: {
+      id: string
+      name?: string
+      description?: string
+      icon?: string
+      tags?: string[]
+      whenToUse?: string
+      variables?: SkillVariable[]
+    }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_REORDER]: {
+    input: { id: string; fromIndex: number; toIndex: number }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_UPDATE_STEP]: {
+    input: {
+      id: string
+      stepId: string
+      detail?: string
+      description?: string
+      waitMs?: number
+    }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_REMOVE_STEP]: {
+    input: { id: string; stepId: string }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_ADD_WAIT]: {
+    input: { id: string; afterIndex: number; waitMs?: number }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_DUPLICATE]: {
+    input: { id: string }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_DELETE]: {
+    input: { id: string }
+    output: { ok: boolean }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_EXECUTE]: {
+    input: { id: string; params: Record<string, string> }
+    output: ReplayStatus
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_RECORD_EXEC]: {
+    input: {
+      id: string
+      startedAt: number
+      finishedAt: number
+      durationMs: number
+      success: boolean
+      params: Record<string, string>
+      error?: string
+    }
+    output: { skill: RecordedSkill | null }
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_EXPORT]: {
+    input: { id: string }
+    output: { fileName: string; content: string } | null
+  }
+  [IPC_CHANNELS.SKILL_RECORDED_CHANGED]: {
+    input: Record<string, never>
+    output: { skills: SkillSummary[] }
   }
 
   // Window

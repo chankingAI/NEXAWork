@@ -156,12 +156,28 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('replay:status')
     expect(registeredChannels).toContain('replay:report')
 
+    // Recorded skills (14: N27; SKILL_RECORDED_CHANGED is push-only)
+    expect(registeredChannels).toContain('skill:recorded:list')
+    expect(registeredChannels).toContain('skill:recorded:get')
+    expect(registeredChannels).toContain('skill:recorded:analyze')
+    expect(registeredChannels).toContain('skill:recorded:create')
+    expect(registeredChannels).toContain('skill:recorded:update')
+    expect(registeredChannels).toContain('skill:recorded:reorder')
+    expect(registeredChannels).toContain('skill:recorded:updateStep')
+    expect(registeredChannels).toContain('skill:recorded:removeStep')
+    expect(registeredChannels).toContain('skill:recorded:addWait')
+    expect(registeredChannels).toContain('skill:recorded:duplicate')
+    expect(registeredChannels).toContain('skill:recorded:delete')
+    expect(registeredChannels).toContain('skill:recorded:execute')
+    expect(registeredChannels).toContain('skill:recorded:recordExec')
+    expect(registeredChannels).toContain('skill:recorded:export')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 85 channels registered', async () => {
+  test('total handler count: 99 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
@@ -169,8 +185,8 @@ describe('IPC Handler Registration', () => {
     // 5 chat + 6 session + 7 model (4 core + 3 N22 apiKey) + 5 expert + 5 skill
     // + 8 automation + 6 project + 3 settings + 4 memory + 5 permission
     // + 8 data (N23) + 9 record (6 N24 + 2 N25 config + 1 N26 list)
-    // + 8 replay (N26) + 4 window + 2 app = 85
-    expect(mockHandlers.size).toBe(85)
+    // + 8 replay (N26) + 14 recorded skill (N27) + 4 window + 2 app = 99
+    expect(mockHandlers.size).toBe(99)
   })
 })
 
@@ -1145,5 +1161,148 @@ describe('Handler Logic: Replay (N26)', () => {
     const stop = mockHandlers.get('replay:stop')!
     const status = await stop({})
     expect(status.state).toBe('idle')
+  })
+})
+
+/**
+ * N27 handler-level coverage. The recorder singleton runs without an output dir
+ * in tests, so recordings are never persisted to disk and `create` cannot load
+ * one — these tests therefore exercise the wiring, validation and unknown-id
+ * branches of every channel. The deep CRUD/execute behaviour is covered against
+ * the `SkillManager` directly in `skill.test.ts`.
+ */
+describe('Handler Logic: Recorded skills (N27)', () => {
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const { registerIPCHandlers } = await import('../main/ipc-handlers')
+    registerIPCHandlers()
+  })
+
+  test('skill:recorded:list returns an array', async () => {
+    const result = await mockHandlers.get('skill:recorded:list')!({})
+    expect(Array.isArray(result.skills)).toBe(true)
+  })
+
+  test('skill:recorded:create rejects without a recordingId', async () => {
+    const create = mockHandlers.get('skill:recorded:create')!
+    await expect(create({}, { name: 'x' })).rejects.toBeDefined()
+  })
+
+  test('skill:recorded:create rejects an unknown recording (NOT_FOUND)', async () => {
+    const create = mockHandlers.get('skill:recorded:create')!
+    await expect(
+      create({}, { recordingId: 'rec_missing', name: 'x' }),
+    ).rejects.toBeDefined()
+  })
+
+  test('skill:recorded:analyze rejects without a recordingId', async () => {
+    const analyze = mockHandlers.get('skill:recorded:analyze')!
+    await expect(analyze({}, {})).rejects.toBeDefined()
+  })
+
+  test('skill:recorded:analyze returns null analysis for an unknown recording', async () => {
+    const result = await mockHandlers.get('skill:recorded:analyze')!(
+      {},
+      { recordingId: 'rec_missing' },
+    )
+    expect(result.analysis).toBeNull()
+  })
+
+  test('skill:recorded:get returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:get')!(
+      {},
+      { id: 'nope' },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:update returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:update')!(
+      {},
+      { id: 'nope', name: 'x' },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:reorder returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:reorder')!(
+      {},
+      { id: 'nope', fromIndex: 0, toIndex: 1 },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:updateStep returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:updateStep')!(
+      {},
+      { id: 'nope', stepId: 's', detail: 'x' },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:removeStep returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:removeStep')!(
+      {},
+      { id: 'nope', stepId: 's' },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:addWait returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:addWait')!(
+      {},
+      { id: 'nope', afterIndex: 0, waitMs: 300 },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:duplicate returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:duplicate')!(
+      {},
+      { id: 'nope' },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:delete reports ok=false for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:delete')!(
+      {},
+      { id: 'nope' },
+    )
+    expect(result.ok).toBe(false)
+  })
+
+  test('skill:recorded:recordExec returns null for an unknown id', async () => {
+    const result = await mockHandlers.get('skill:recorded:recordExec')!(
+      {},
+      {
+        id: 'nope',
+        startedAt: 0,
+        finishedAt: 1,
+        durationMs: 1,
+        success: true,
+        params: {},
+      },
+    )
+    expect(result.skill).toBeNull()
+  })
+
+  test('skill:recorded:execute rejects without an id', async () => {
+    const execute = mockHandlers.get('skill:recorded:execute')!
+    await expect(execute({}, { params: {} })).rejects.toBeDefined()
+  })
+
+  test('skill:recorded:execute rejects an unknown id (NOT_FOUND)', async () => {
+    const execute = mockHandlers.get('skill:recorded:execute')!
+    await expect(execute({}, { id: 'nope', params: {} })).rejects.toBeDefined()
+  })
+
+  test('skill:recorded:export returns null for an unknown id', async () => {
+    const exported = await mockHandlers.get('skill:recorded:export')!(
+      {},
+      { id: 'nope' },
+    )
+    expect(exported).toBeNull()
   })
 })
