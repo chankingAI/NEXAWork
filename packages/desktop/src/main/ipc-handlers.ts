@@ -50,6 +50,12 @@ import {
   type TerminalManager,
 } from './backend/terminal-manager'
 import {
+  initFileBrowserManager,
+  type FileBrowserManager,
+  type WatchFn,
+} from './backend/file-browser-manager'
+import type { FileNodeKind } from '../shared/file-tree'
+import {
   detectLanguage,
   type GitChange,
   type GitChangeStatus,
@@ -101,6 +107,15 @@ let recordedSkills: SkillManager
 let editorManager: EditorManager
 // node-pty terminal sessions for the xterm.js panel (N29).
 let terminalManager: TerminalManager
+// Project file-tree browser: directory listing + fs watching (N30).
+let fileBrowserManager: FileBrowserManager
+// Test seam: lets unit tests inject a fake directory watcher before
+// registration so `fs.watch` (which spawns OS handles) is never touched.
+let fileWatchOverride: WatchFn | null = null
+/** @internal Test-only: override the fs watcher factory (null = real fs.watch). */
+export function __setFileWatchForTests(fn: WatchFn | null): void {
+  fileWatchOverride = fn
+}
 // Test seam: lets unit tests inject a fake PTY spawner before registration so
 // the native node-pty binding (which cannot load under `bun test`) is avoided.
 let terminalSpawnOverride: PtySpawnFn | null = null
@@ -231,6 +246,15 @@ function broadcastSkillChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.SKILL_RECORDED_CHANGED, { skills })
+    }
+  }
+}
+
+/** Push a filesystem-change notification for a directory to renderers (N30). */
+function broadcastFileChanged(dir: string): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.FILE_CHANGED, { dir })
     }
   }
 }
@@ -732,6 +756,15 @@ export function registerIPCHandlers(): void {
   )
   terminalManager.onData(broadcastTerminalData)
   terminalManager.onExit(broadcastTerminalExit)
+
+  // Initialize the N30 file-browser manager (directory listing + fs watching).
+  // Tear down any prior watchers on re-registration, then forward fs change
+  // events to renderer windows so the tree updates live.
+  fileBrowserManager?.dispose()
+  fileBrowserManager = initFileBrowserManager(
+    fileWatchOverride ? { watch: fileWatchOverride } : {},
+  )
+  fileBrowserManager.onChanged(broadcastFileChanged)
   memoryStore.prune(
     (settings.get('memoryRetentionDays') as number) ??
       DEFAULT_SETTINGS.memoryRetentionDays,
@@ -1677,6 +1710,105 @@ export function registerIPCHandlers(): void {
       }
       return gitDiffData(input.path, resolveEditorCwd(input?.cwd))
     },
+  )
+
+  // === File browser (N30) ===
+  ipcMain.handle(IPC_CHANNELS.FILE_ROOT, async () => ({
+    root: fileBrowserManager.getRoot(),
+  }))
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_LIST,
+    async (
+      _event,
+      input: {
+        path: string
+        offset?: number
+        limit?: number
+        respectGitignore?: boolean
+      },
+    ) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      try {
+        return fileBrowserManager.list({
+          path: input.path,
+          offset: input.offset,
+          limit: input.limit,
+          respectGitignore: input.respectGitignore,
+        })
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError(
+          'LIST_FAILED',
+          e?.message ?? 'Failed to list directory',
+        )
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_CREATE,
+    async (_event, input: { path: string; kind: FileNodeKind }) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      try {
+        return fileBrowserManager.create(input.path, input.kind ?? 'file')
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('CREATE_FAILED', e?.message ?? 'Failed to create')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_RENAME,
+    async (_event, input: { path: string; newPath: string }) => {
+      if (!input?.path || !input?.newPath) {
+        throw createError('INVALID_INPUT', 'path and newPath are required')
+      }
+      try {
+        return fileBrowserManager.rename(input.path, input.newPath)
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('RENAME_FAILED', e?.message ?? 'Failed to rename')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_MOVE,
+    async (_event, input: { path: string; targetDir: string }) => {
+      if (!input?.path || !input?.targetDir) {
+        throw createError('INVALID_INPUT', 'path and targetDir are required')
+      }
+      try {
+        return fileBrowserManager.move(input.path, input.targetDir)
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('MOVE_FAILED', e?.message ?? 'Failed to move')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_DELETE,
+    async (_event, input: { path: string }) => {
+      if (!input?.path) throw createError('INVALID_INPUT', 'path is required')
+      try {
+        return fileBrowserManager.remove(input.path)
+      } catch (err: unknown) {
+        const e = err as { message?: string }
+        throw createError('DELETE_FAILED', e?.message ?? 'Failed to delete')
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_SEARCH,
+    async (_event, input: { query: string; root?: string; limit?: number }) =>
+      fileBrowserManager.search(input?.query ?? '', {
+        root: input?.root,
+        limit: input?.limit,
+      }),
   )
 
   // === Terminal (N29) ===

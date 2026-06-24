@@ -22,6 +22,8 @@ import type {
   SkillVariable,
   EditorPersistState,
   TerminalSessionInfo,
+  FileEntry,
+  FileNodeKind,
 } from '../shared/ipc-channels'
 
 /**
@@ -468,6 +470,57 @@ const nexaworkAPI = {
       ipcRenderer.on(IPC_CHANNELS.TERMINAL_AI_COMMAND, handler)
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_AI_COMMAND, handler)
+      }
+    },
+  },
+
+  // === File browser (N30) ===
+  files: {
+    root: (): Promise<{ root: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_ROOT, {}),
+    list: (input: {
+      path: string
+      offset?: number
+      limit?: number
+      respectGitignore?: boolean
+    }): Promise<{
+      path: string
+      root: string
+      entries: FileEntry[]
+      hasMore: boolean
+      total: number
+    }> => ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST, input),
+    create: (input: {
+      path: string
+      kind: FileNodeKind
+    }): Promise<{ path: string; success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_CREATE, input),
+    rename: (input: {
+      path: string
+      newPath: string
+    }): Promise<{ path: string; success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_RENAME, input),
+    move: (input: {
+      path: string
+      targetDir: string
+    }): Promise<{ path: string; success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_MOVE, input),
+    delete: (input: {
+      path: string
+    }): Promise<{ path: string; success: boolean }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_DELETE, input),
+    search: (input: {
+      query: string
+      root?: string
+      limit?: number
+    }): Promise<{ matches: FileEntry[] }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_SEARCH, input),
+
+    onChanged: (callback: (data: { dir: string }) => void) => {
+      const handler = (_: unknown, data: { dir: string }) => callback(data)
+      ipcRenderer.on(IPC_CHANNELS.FILE_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.FILE_CHANGED, handler)
       }
     },
   },

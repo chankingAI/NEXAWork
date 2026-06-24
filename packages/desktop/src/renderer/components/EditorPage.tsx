@@ -3,12 +3,14 @@
  *
  * Owns the shared {@link useCodeEditor} session (so tabs survive toggling to the
  * diff view and back) and exposes a header with a Code / Diff segmented control
- * plus an "open file by path" affordance (a full file browser arrives in N30).
+ * plus an "open file by path" affordance. A collapsible {@link FileBrowser}
+ * side panel (N30) lists the project tree; clicking a file opens it here.
  */
 import { useCallback, useState } from 'react';
-import { Columns2, FileCode, FolderOpen } from 'lucide-react';
+import { Columns2, FileCode, FolderOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { CodeEditor } from './CodeEditor';
 import { DiffViewer } from './DiffViewer';
+import { FileBrowser } from './FileBrowser';
 import { useCodeEditor } from '../hooks/useCodeEditor';
 import { useI18n } from '../hooks/useI18n';
 
@@ -24,6 +26,15 @@ export function EditorPage({ onAskAi }: EditorPageProps) {
   const editor = useCodeEditor();
   const [view, setView] = useState<EditorView>('code');
   const [openPath, setOpenPath] = useState('');
+  const [showBrowser, setShowBrowser] = useState(true);
+
+  const handleOpenFromTree = useCallback(
+    (path: string) => {
+      void editor.open(path);
+      setView('code');
+    },
+    [editor],
+  );
 
   const handleOpen = useCallback(() => {
     const trimmed = openPath.trim();
@@ -37,6 +48,15 @@ export function EditorPage({ onAskAi }: EditorPageProps) {
     <div className="flex h-full w-full flex-col bg-[var(--color-bg-primary)]">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-2">
+        <button
+          onClick={() => setShowBrowser(v => !v)}
+          aria-label={t('files.toggle')}
+          title={t('files.toggle')}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+        >
+          {showBrowser ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </button>
+
         <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-primary)]">
           <FileCode size={16} />
           {t('editor.title')}
@@ -93,8 +113,15 @@ export function EditorPage({ onAskAi }: EditorPageProps) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-hidden">
-        {view === 'code' ? <CodeEditor editor={editor} onAskAi={onAskAi} /> : <DiffViewer />}
+      <div className="flex flex-1 overflow-hidden">
+        {showBrowser && (
+          <div className="w-60 flex-shrink-0 border-r border-[var(--color-border)]">
+            <FileBrowser onOpenFile={handleOpenFromTree} activePath={editor.activePath} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          {view === 'code' ? <CodeEditor editor={editor} onAskAi={onAskAi} /> : <DiffViewer />}
+        </div>
       </div>
     </div>
   );
