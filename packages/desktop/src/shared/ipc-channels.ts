@@ -12,6 +12,7 @@ import type {
 } from './editor'
 import type { ReplayReport, ReplayStatus } from './replay'
 import type { TerminalSessionInfo } from './terminal'
+import type { FileEntry, FileNodeKind } from './file-tree'
 import type {
   RecordingAnalysis,
   RecordedSkill,
@@ -55,6 +56,8 @@ export type {
   TerminalShellKind,
   ResolvedShell,
 } from './terminal'
+
+export type { FileEntry, FileNodeKind, FileIconCategory } from './file-tree'
 
 export const IPC_CHANNELS = {
   // Chat
@@ -200,6 +203,16 @@ export const IPC_CHANNELS = {
   TERMINAL_DATA: 'terminal:data', // push: main → renderer (PTY stdout)
   TERMINAL_EXIT: 'terminal:exit', // push: main → renderer (PTY exit)
   TERMINAL_AI_COMMAND: 'terminal:aiCommand', // push: AI shell command echo
+
+  // File browser (N30)
+  FILE_ROOT: 'file:root',
+  FILE_LIST: 'file:list',
+  FILE_CREATE: 'file:create',
+  FILE_RENAME: 'file:rename',
+  FILE_MOVE: 'file:move',
+  FILE_DELETE: 'file:delete',
+  FILE_SEARCH: 'file:search',
+  FILE_CHANGED: 'file:changed', // push: main → renderer (fs watch)
 
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
@@ -695,6 +708,51 @@ export interface IPCRequestMap {
   [IPC_CHANNELS.SKILL_RECORDED_CHANGED]: {
     input: Record<string, never>
     output: { skills: SkillSummary[] }
+  }
+
+  // File browser (N30)
+  [IPC_CHANNELS.FILE_ROOT]: {
+    input: Record<string, never>
+    output: { root: string }
+  }
+  [IPC_CHANNELS.FILE_LIST]: {
+    input: {
+      path: string
+      offset?: number
+      limit?: number
+      respectGitignore?: boolean
+    }
+    output: {
+      path: string
+      root: string
+      entries: FileEntry[]
+      hasMore: boolean
+      total: number
+    }
+  }
+  [IPC_CHANNELS.FILE_CREATE]: {
+    input: { path: string; kind: FileNodeKind }
+    output: { path: string; success: boolean }
+  }
+  [IPC_CHANNELS.FILE_RENAME]: {
+    input: { path: string; newPath: string }
+    output: { path: string; success: boolean }
+  }
+  [IPC_CHANNELS.FILE_MOVE]: {
+    input: { path: string; targetDir: string }
+    output: { path: string; success: boolean }
+  }
+  [IPC_CHANNELS.FILE_DELETE]: {
+    input: { path: string }
+    output: { path: string; success: boolean }
+  }
+  [IPC_CHANNELS.FILE_SEARCH]: {
+    input: { query: string; root?: string; limit?: number }
+    output: { matches: FileEntry[] }
+  }
+  [IPC_CHANNELS.FILE_CHANGED]: {
+    input: Record<string, never>
+    output: { dir: string }
   }
 
   // Code editor (N28)

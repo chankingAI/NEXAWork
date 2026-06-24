@@ -195,12 +195,21 @@ describe('IPC Handler Registration', () => {
     expect(registeredChannels).toContain('terminal:kill')
     expect(registeredChannels).toContain('terminal:list')
 
+    // File browser (7: N30; file:changed is push-only)
+    expect(registeredChannels).toContain('file:root')
+    expect(registeredChannels).toContain('file:list')
+    expect(registeredChannels).toContain('file:create')
+    expect(registeredChannels).toContain('file:rename')
+    expect(registeredChannels).toContain('file:move')
+    expect(registeredChannels).toContain('file:delete')
+    expect(registeredChannels).toContain('file:search')
+
     // App (2)
     expect(registeredChannels).toContain('app:version')
     expect(registeredChannels).toContain('app:platform')
   })
 
-  test('total handler count: 106 channels registered', async () => {
+  test('total handler count: 118 channels registered', async () => {
     mockHandlers.clear()
     mockHandle.mockClear()
     const { registerIPCHandlers } = await import('../main/ipc-handlers')
@@ -211,8 +220,9 @@ describe('IPC Handler Registration', () => {
     // + 8 replay (N26) + 14 recorded skill (N27)
     // + 7 editor (N28: read/write/stat/loadState/saveState/gitChanges/gitDiff)
     // + 5 terminal (N29: create/write/resize/kill/list)
-    // + 4 window + 2 app = 111
-    expect(mockHandlers.size).toBe(111)
+    // + 7 file browser (N30: root/list/create/rename/move/delete/search)
+    // + 4 window + 2 app = 118
+    expect(mockHandlers.size).toBe(118)
   })
 })
 
@@ -1530,5 +1540,132 @@ describe('Handler Logic: Terminal (N29)', () => {
       { id: info.id, data: 'x' },
     )
     expect(res.success).toBe(false)
+  })
+})
+
+/**
+ * N30 file-browser handler logic. Disk IO runs against a temp directory; the fs
+ * watcher is stubbed via `__setFileWatchForTests` so registration never opens
+ * real OS watch handles. Paths are absolute so they resolve regardless of the
+ * manager's project root.
+ */
+describe('Handler Logic: File browser (N30)', () => {
+  const workDir = mkdtempSync(join(tmpdir(), 'nexa-ipc-files-'))
+
+  beforeEach(async () => {
+    mockHandlers.clear()
+    mockHandle.mockClear()
+    const handlers = await import('../main/ipc-handlers')
+    handlers.__setFileWatchForTests(() => ({ close: () => {} }))
+    handlers.registerIPCHandlers()
+  })
+
+  afterAll(() => {
+    rmSync(workDir, { recursive: true, force: true })
+  })
+
+  test('file:root returns the project root', async () => {
+    const res = await mockHandlers.get('file:root')!({})
+    expect(typeof res.root).toBe('string')
+    expect(res.root.length).toBeGreaterThan(0)
+  })
+
+  test('file:create then file:list surfaces the new entry', async () => {
+    const filePath = join(workDir, 'hello.ts')
+    const created = await mockHandlers.get('file:create')!(
+      {},
+      { path: filePath, kind: 'file' },
+    )
+    expect(created.success).toBe(true)
+
+    const listed = await mockHandlers.get('file:list')!({}, { path: workDir })
+    expect(listed.entries.map((e: { name: string }) => e.name)).toContain(
+      'hello.ts',
+    )
+    expect(listed.path).toBe(workDir)
+  })
+
+  test('file:list rejects when path is missing', async () => {
+    const list = mockHandlers.get('file:list')!
+    await expect(list({}, {})).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('file:create rejects (CREATE_FAILED) for an existing path', async () => {
+    const p = join(workDir, 'dup.ts')
+    await mockHandlers.get('file:create')!({}, { path: p, kind: 'file' })
+    await expect(
+      mockHandlers.get('file:create')!({}, { path: p, kind: 'file' }),
+    ).rejects.toMatchObject({ code: 'CREATE_FAILED' })
+  })
+
+  test('file:rename moves a file on disk', async () => {
+    const from = join(workDir, 'before.ts')
+    const to = join(workDir, 'after.ts')
+    await mockHandlers.get('file:create')!({}, { path: from, kind: 'file' })
+    const res = await mockHandlers.get('file:rename')!(
+      {},
+      { path: from, newPath: to },
+    )
+    expect(res.success).toBe(true)
+    const listed = await mockHandlers.get('file:list')!({}, { path: workDir })
+    const names = listed.entries.map((e: { name: string }) => e.name)
+    expect(names).toContain('after.ts')
+    expect(names).not.toContain('before.ts')
+  })
+
+  test('file:rename rejects when newPath is missing', async () => {
+    const rename = mockHandlers.get('file:rename')!
+    await expect(
+      rename({}, { path: join(workDir, 'x.ts') }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  test('file:move relocates an entry into a target dir', async () => {
+    const sub = join(workDir, 'sub')
+    const file = join(workDir, 'movable.ts')
+    await mockHandlers.get('file:create')!({}, { path: sub, kind: 'directory' })
+    await mockHandlers.get('file:create')!({}, { path: file, kind: 'file' })
+    const res = await mockHandlers.get('file:move')!(
+      {},
+      { path: file, targetDir: sub },
+    )
+    expect(res.success).toBe(true)
+    const listed = await mockHandlers.get('file:list')!({}, { path: sub })
+    expect(listed.entries.map((e: { name: string }) => e.name)).toContain(
+      'movable.ts',
+    )
+  })
+
+  test('file:delete removes an entry', async () => {
+    const p = join(workDir, 'trash.ts')
+    await mockHandlers.get('file:create')!({}, { path: p, kind: 'file' })
+    const res = await mockHandlers.get('file:delete')!({}, { path: p })
+    expect(res.success).toBe(true)
+    const listed = await mockHandlers.get('file:list')!({}, { path: workDir })
+    expect(listed.entries.map((e: { name: string }) => e.name)).not.toContain(
+      'trash.ts',
+    )
+  })
+
+  test('file:search fuzzy-matches a created file by name', async () => {
+    const p = join(workDir, 'searchable-token.ts')
+    await mockHandlers.get('file:create')!({}, { path: p, kind: 'file' })
+    const res = await mockHandlers.get('file:search')!(
+      {},
+      { query: 'searchabletoken', root: workDir },
+    )
+    expect(
+      res.matches.some(
+        (m: { name: string }) => m.name === 'searchable-token.ts',
+      ),
+    ).toBe(true)
+  })
+
+  test('file:search returns nothing for an empty query', async () => {
+    const res = await mockHandlers.get('file:search')!(
+      {},
+      { query: '   ', root: workDir },
+    )
+    expect(res.matches).toEqual([])
   })
 })
